@@ -1,0 +1,4 @@
+node_modules/
+.bundle.tmp.js
+.DS_Store
+*.zip

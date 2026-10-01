@@ -1,0 +1,25 @@
+{
+  "name": "Michi",
+  "short_name": "Michi",
+  "description": "Track any goal — JEE, NEET, Boards, CLAT, College, or custom — with tests, study time, tasks, XP and streaks.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#0b0a0b",
+  "theme_color": "#0b0a0b",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
