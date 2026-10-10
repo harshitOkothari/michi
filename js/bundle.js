@@ -896,19 +896,19 @@ const FALL_TYPES = [
   { id: "mix", name: "Autumn mix", icon: "🍃" },
   { id: "none", name: "Nothing", icon: "—" },
 ];
-const FALL_DEFAULTS = { type: "sakura", amount: 14, speed: 1, size: 1, sway: 1, opacity: 0.75, front: false, spin: true };
+const FALL_DEFAULTS = { type: "sakura", amount: 26, speed: 1, size: 1.1, sway: 1, opacity: 0.9, front: true, spin: true };
 
 const Fall = {
   get() {
-    try { return { ...FALL_DEFAULTS, ...(JSON.parse(localStorage.getItem("fall") || "{}")) }; } catch { return { ...FALL_DEFAULTS }; }
+    try { return { ...FALL_DEFAULTS, ...(JSON.parse(localStorage.getItem("fall2") || "{}")) }; } catch { return { ...FALL_DEFAULTS }; }
   },
   set(patch) {
     const v = { ...this.get(), ...patch };
-    try { localStorage.setItem("fall", JSON.stringify(v)); } catch {}
+    try { localStorage.setItem("fall2", JSON.stringify(v)); } catch {}
     this.apply();
     return v;
   },
-  reset() { try { localStorage.removeItem("fall"); } catch {} this.apply(); },
+  reset() { try { localStorage.removeItem("fall2"); } catch {} this.apply(); },
   apply() {
     const layer = document.getElementById("fall-layer");
     if (!layer) return;
@@ -1979,6 +1979,8 @@ const Profile = {
       <div class="page-header"><h2>Settings</h2></div>
 
       ${Themes.html()}
+
+      <div class="panel idc-panel"><h3>My Michi ID</h3>${IDCard.html({ name: profile?.name, email: profile?.email || user.email, avatar: profile?.avatar_url, seed: user.id, joined: user.created_at ? new Date(user.created_at).toLocaleDateString("en-IN", { month: "short", year: "numeric" }) : "", level: progress.level, xp: totalXP, streak: effectiveStreak(streak, settings) })}</div>
 
       <div class="panel profile-panel">
         <div class="profile-top">

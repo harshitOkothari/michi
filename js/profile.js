@@ -91,6 +91,8 @@ const Profile = {
 
       ${Themes.html()}
 
+      <div class="panel idc-panel"><h3>My Michi ID</h3>${IDCard.html({ name: profile?.name, email: profile?.email || user.email, avatar: profile?.avatar_url, seed: user.id, joined: user.created_at ? new Date(user.created_at).toLocaleDateString("en-IN", { month: "short", year: "numeric" }) : "", level: progress.level, xp: totalXP, streak: effectiveStreak(streak, settings) })}</div>
+
       <div class="panel profile-panel">
         <div class="profile-top">
           <div class="avatar-upload">
