@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" id="meta-theme-color" content="#0b0a0b" />
 <title>Michi — study, goals &amp; fitness path</title>
 <meta name="description" content="Track your goals, tests, study time, tasks and workouts in one place. Earn XP, keep your streak, and see your progress." />
@@ -15,6 +15,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>M</text></svg>" />
 <link rel="stylesheet" href="css/style.css" />
 <link rel="stylesheet" href="css/landing2.css" />
+<link rel="preload" href="assets/katana.glb" as="fetch" crossorigin />
 <link rel="preload" href="js/bundle.js" as="script" />
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script>
@@ -41,6 +42,7 @@
   <pattern id="p-ito" width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="14" height="14" fill="#6b1f22"/><path d="M0 0H14M0 7H14" stroke="#1c0b0d" stroke-width="1.6"/><path d="M0 0V14M7 0V14" stroke="#c9a24a" stroke-opacity=".55" stroke-width=".8"/></pattern>
 </defs></svg>
 <div id="auth-screen">
+  <canvas id="katana3d" class="v2-k3d" aria-hidden="true"></canvas>
   <div class="ld-grain" aria-hidden="true"></div>
   <div class="ld-top">
     <a class="ld-logo" href="#" aria-label="Michi home"><span class="hanko">M</span><b>MICHI</b></a>
@@ -52,7 +54,6 @@
       <div class="v2-dark">
         <h1 class="v2-big">Michi<sup>®</sup></h1>
         <p class="v2-meta">STUDY · TRAIN · GROW<br>SCROLL TO WAKE THE BLADE</p>
-        <canvas id="katana3d" class="v2-k3d" aria-hidden="true"></canvas>
         <svg class="v2-sword" viewBox="0 0 1100 80" aria-hidden="true">
           <defs>
             <linearGradient id="k-steel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fdfdfe"/><stop offset=".3" stop-color="#c3cad2"/><stop offset=".52" stop-color="#5d6670"/><stop offset=".6" stop-color="#9aa3ad"/><stop offset="1" stop-color="#e9edf1"/></linearGradient>
@@ -73,29 +74,6 @@
           <rect x="1052" y="24" width="30" height="32" rx="5" fill="url(#k-gold)"/><rect x="1082" y="30" width="8" height="20" rx="3" fill="#6d1519"/>
         </svg>
         <p class="v2-awake">The spirit awakens</p>
-      </div>
-      <div class="v2-wave">
-        <svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-          <defs>
-            <linearGradient id="m-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f7e3c4"/><stop offset=".6" stop-color="#f3d2b0"/><stop offset="1" stop-color="#ecbf9c"/></linearGradient>
-            <linearGradient id="m-fuji" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#34425c"/><stop offset="1" stop-color="#6d7a96"/></linearGradient>
-            <linearGradient id="m-r1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7f8aa3"/><stop offset="1" stop-color="#c9b9b4"/></linearGradient>
-            <linearGradient id="m-r2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#46526c"/><stop offset="1" stop-color="#a99ba0"/></linearGradient>
-            <linearGradient id="m-r3" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1f2a3d"/><stop offset="1" stop-color="#3a3f56"/></linearGradient>
-            <linearGradient id="m-mist" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff4e2" stop-opacity="0"/><stop offset=".6" stop-color="#fff4e2" stop-opacity=".85"/><stop offset="1" stop-color="#fff4e2" stop-opacity="0"/></linearGradient>
-            <filter id="m-soft"><feGaussianBlur stdDeviation="6"/></filter>
-          </defs>
-          <rect width="1600" height="900" fill="url(#m-sky)"/>
-          <circle cx="1130" cy="270" r="150" fill="#d9362b"/><circle cx="1130" cy="270" r="150" fill="none" stroke="#b02a22" stroke-width="3" opacity=".5"/>
-          <g class="v2-cl" fill="none" stroke="#c9a98a" stroke-width="3" stroke-linecap="round"><path d="M120 200q40-40 90-10q40-40 100 0q50-20 70 20H120z" fill="#fff6e6"/><path d="M1240 120q40-40 90-10q40-40 100 0q50-20 70 20h-260z" fill="#fff6e6"/><path d="M640 330q40-40 90-10q40-40 100 0q50-20 70 20H640z" fill="#fff6e6"/></g>
-          <g class="v2-w1"><path d="M330 640L700 250Q760 190 820 250L1270 640Z" fill="url(#m-fuji)"/><path d="M640 305L700 250Q760 190 820 250L880 312Q840 290 810 320Q780 285 750 322Q720 292 690 326Q665 300 640 305Z" fill="#fbf6ee"/></g>
-          <path d="M-60 640Q150 470 360 590Q520 500 700 620Q900 520 1120 610Q1330 500 1660 620V900H-60Z" fill="url(#m-r1)"/>
-          <rect x="-40" y="560" width="1700" height="90" fill="url(#m-mist)" filter="url(#m-soft)"/>
-          <g class="v2-w2"><path d="M-60 740Q200 560 430 700Q640 590 860 720Q1100 600 1330 710Q1500 640 1660 700V900H-60Z" fill="url(#m-r2)"/><rect x="-40" y="680" width="1700" height="80" fill="url(#m-mist)" filter="url(#m-soft)"/></g>
-          <path d="M-60 820Q260 700 520 790Q800 690 1080 800Q1340 710 1660 790V900H-60Z" fill="url(#m-r3)"/>
-          <g fill="#141b2a"><path d="M200 800l14-70 14 70zM226 800l12-90 12 90zM1260 800l14-80 14 80zM1290 800l12-100 12 100z"/></g>
-        </svg>
-        <p class="v2-line">To master the sword is to master the self.</p>
       </div>
     </div>
   </section>

@@ -5,7 +5,7 @@
 // speeds up / offlines the UI, not your records.
 // ============================================================
 
-const CACHE_NAME = "dashboard-shell-v24";
+const CACHE_NAME = "dashboard-shell-v26";
 const SHELL_FILES = [
   "./",
   "index.html",
