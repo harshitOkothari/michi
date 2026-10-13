@@ -279,6 +279,7 @@ const Fitness = {
 
     const user = await DB.currentUser();
     this.measurements = await DB.list("body_measurements", { filters: { user_id: user.id }, order: "measured_at", ascending: true });
+    this.gender = await BodyGender.get(user);
     this.renderBodyMap();
     this.renderScale();
     this.renderWizard();
@@ -320,153 +321,36 @@ const Fitness = {
     BODY_PARTS.forEach((p) => (v[p.key] = this.wiz?.vals?.[p.key] ?? this.latestOf(p.key).now?.[p.key] ?? null));
     const ask = this.wiz ? this.wiz.steps[this.wiz.i] : null;
 
-    const mir = (d) => d.replace(/(-?\d+(?:\.\d+)?)[ ,](-?\d+(?:\.\d+)?)/g, (m, x, y) => `${-x} ${y}`);
-    const both = (d) => `${d} ${mir(d)}`;            // one path, both halves (torso, head…)
-    const limb = (d, cls = "") => `<path class="${cls}" d="${d}"/><path class="${cls}" d="${mir(d)}"/>`; // separate halves, own shading
-    const lines = (arr, cls = "bd") => arr.map((d) => `<path class="${cls}" d="${d}"/><path class="${cls}" d="${mir(d)}"/>`).join("");
-
-    // ----- FRONT / BACK shared silhouette (right half) -----
-    const S = {
-      head: "M0 8 C12 8 19 17 19 30 C19 42 15 52 9 58 C6 61 3 62 0 62",
-      neck: "M0 52 L11 52 C12 60 13 66 16 74 L0 76",
-      torso: "M0 68 L13 70 C30 74 52 82 66 93 C62 106 52 116 48 128 C46 146 44 160 38 180 C32 194 30 204 32 218 C35 228 38 238 36 250 L0 254",
-      arm: "M60 92 C72 88 83 97 84 111 C86 126 85 138 82 150 C80 162 77 170 76 180 C77 192 77 206 74 222 C72 234 69 246 67 256 L57 256 C58 244 60 232 60 220 C60 206 60 192 60 180 C60 164 58 150 55 138 C52 126 51 116 50 106 C52 98 56 93 60 92 Z",
-      hand: "M57 256 L68 256 C72 268 72 280 68 290 C64 296 59 293 58 284 C56 274 56 264 57 256 Z",
-      leg: "M2 246 L39 238 C46 252 51 272 50 290 C49 306 44 320 40 334 C37 342 38 350 38 358 C40 368 37 384 32 396 C30 400 29 404 29 408 L14 408 C14 398 12 386 11 372 C10 360 9 350 10 340 C11 326 10 306 8 288 C6 272 4 258 2 246 Z",
-      foot: "M14 408 L29 408 C33 414 33 420 26 423 L12 423 C9 419 11 412 14 408 Z",
-      brief: "M0 217 L40 215 C43 226 41 237 35 246 C25 256 14 262 3 268 L0 268 Z",
-      briefB: "M0 217 L40 215 C44 228 44 242 40 254 C28 262 14 264 0 262 Z",
-    };
-    // muscle-group bands (curved so they wrap the form); clipped to the body
-    const B = {
-      shoulders: "M50 86 Q70 82 90 90 L90 128 Q70 124 50 128 Z",
-      arms: "M52 132 Q70 136 90 132 L90 184 Q70 188 52 184 Z",
-      chest: "M-54 90 Q0 102 54 90 L54 136 Q0 148 -54 136 Z",
-      waist: "M-48 150 Q0 160 48 150 L48 218 Q0 228 -48 218 Z",
-      thighs: "M0 252 Q28 259 56 252 L56 322 Q28 329 0 322 Z",
-    };
-    // ----- SIDE silhouette (faces left) -----
-    const SIDE = {
-      body: "M-2 8 C10 6 19 15 19 28 C19 40 16 50 12 56 L13 64 C15 72 22 78 30 86 C36 98 36 112 34 126 C32 146 28 164 27 180 C26 192 28 200 34 212 C41 224 42 242 37 256 C35 270 33 290 31 308 C30 322 29 332 29 342 C31 352 34 362 33 376 C32 388 27 398 24 404 L24 412 C24 418 18 421 10 421 L-28 421 C-36 421 -38 414 -32 411 C-24 408 -18 406 -15 402 C-14 394 -15 384 -15 372 C-16 358 -19 348 -21 340 C-23 330 -24 322 -25 312 C-28 296 -30 280 -29 268 C-28 256 -29 246 -30 236 C-32 226 -32 214 -30 204 C-30 192 -29 182 -29 172 C-31 158 -36 148 -41 136 C-46 124 -46 112 -42 104 C-38 96 -28 92 -20 88 L-14 84 L-12 68 L-11 60 C-14 58 -16 56 -15 53 L-16 47 L-14 45 L-17 40 C-21 38 -21 35 -18 33 L-16 29 C-17 24 -15 18 -10 12 C-8 9 -5 8 -2 8 Z",
-      arm: "M-10 92 C2 88 14 94 15 108 C16 124 14 142 12 158 C11 170 11 184 11 196 C11 212 12 228 13 244 L-2 252 C-3 234 -6 216 -9 200 C-11 188 -12 176 -13 166 C-15 150 -17 134 -15 118 C-15 106 -13 97 -10 92 Z",
-      hand: "M-2 252 L13 246 C16 260 16 274 10 284 C4 290 -3 284 -4 272 Z",
-      brief: "M-31 216 C-30 232 -29 246 -26 262 C-10 266 14 266 32 260 C40 248 44 232 40 214 C12 220 -12 220 -31 216 Z",
-    };
-    const SB = {
-      shoulders: "M-16 86 Q0 82 18 90 L18 120 Q0 116 -16 120 Z",
-      arms: "M-18 122 Q0 126 18 122 L18 176 Q0 180 -18 176 Z",
-      chest: "M-54 94 Q-34 102 -14 96 L-14 144 Q-34 152 -54 144 Z",
-      waist: "M-40 154 Q0 164 46 154 L46 214 Q0 224 -40 214 Z",
-      thighs: "M-40 252 Q0 259 48 252 L48 320 Q0 327 -40 320 Z",
-    };
-
-    const defs = `<defs>
-      <linearGradient id="clay" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#85868d"/><stop offset=".2" stop-color="#c3c4c9"/><stop offset=".5" stop-color="#eceef0"/><stop offset=".8" stop-color="#c0c1c7"/><stop offset="1" stop-color="#7f8087"/></linearGradient>
-      <linearGradient id="clayS" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#d9dadd"/><stop offset=".35" stop-color="#e8e9ec"/><stop offset=".75" stop-color="#b6b7bd"/><stop offset="1" stop-color="#85868d"/></linearGradient>
-      <linearGradient id="vshade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset=".45" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".22"/></linearGradient>
-      <linearGradient id="briefG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b5b6bc"/><stop offset="1" stop-color="#8b8c93"/></linearGradient>
-      <radialGradient id="floorG"><stop offset="0" stop-color="#000" stop-opacity=".42"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
-    </defs>`;
-
-    // clip-paths for a view: everything / torso+legs / arms
-    const clips = (id, all, bodyPaths, armPaths) => `<clipPath id="${id}-all">${all}</clipPath><clipPath id="${id}-body">${bodyPaths}</clipPath><clipPath id="${id}-arms">${armPaths}</clipPath>`;
-    const cp = (ds) => ds.map((d) => `<path d="${d}"/>`).join("");
-    const bandZone = (key, d, mirrorIt) => `<g class="bz${v[key] != null ? " has" : ""}${ask === key ? " ask" : ""}" data-part="${key}" tabindex="0" role="button" aria-label="${key}${v[key] != null ? " " + v[key] + " centimetres" : ", not measured"}"><path d="${d}"/>${mirrorIt ? `<path d="${mir(d)}"/>` : ""}</g>`;
-    const zoneSet = (set, keys, mirrorKeys, clipId) => keys.map((k) => bandZone(k, set[k], mirrorKeys.includes(k))).join("");
-
-    // ---------- FRONT ----------
-    const frontAll = [both(S.head), both(S.neck), both(S.torso), mir(S.arm), S.arm, mir(S.hand), S.hand, mir(S.leg), S.leg, mir(S.foot), S.foot].join(" ");
-    const front = `
-      <g transform="translate(110 0)">
-        <ellipse cx="0" cy="424" rx="64" ry="7" fill="url(#floorG)"/>
-        ${clips("fr", `<path d="${frontAll}"/>`, cp([both(S.torso), S.leg, mir(S.leg), both(S.head), both(S.neck)]), cp([S.arm, mir(S.arm), S.hand, mir(S.hand)]))}
-        <g class="bfig">
-          ${limb(S.leg, "bs")}${limb(S.foot, "bs")}
-          <path class="bs" d="${both(S.neck)}"/><path class="bs" d="${both(S.head)}"/>
-          <ellipse class="bs" cx="-19.5" cy="34" rx="2.6" ry="5.4"/><ellipse class="bs" cx="19.5" cy="34" rx="2.6" ry="5.4"/>
-          <path class="bs" d="${both(S.torso)}"/>
-          <path class="brf" d="${both(S.brief)}"/>
-          ${limb(S.hand, "bs")}
-          <g class="bd-wrap">
-            ${lines(["M8 60 C10 68 13 74 16 78", "M6 80 C20 78 36 82 58 92", "M3 120 C18 134 38 132 49 118", "M49 120 C52 112 54 104 55 98", "M2 148 C8 150 14 150 18 148", "M2 166 C8 168 15 168 19 166", "M2 184 C8 186 14 186 17 184", "M19 138 C22 160 21 188 17 212", "M46 134 L38 138", "M46 144 L39 148", "M45 154 L39 157", "M31 206 C26 212 17 216 9 217", "M26 262 C34 282 34 304 28 326", "M12 264 C17 286 19 308 15 330", "M26 352 C31 366 30 382 25 396", "M18 354 C17 372 18 388 19 398", "M56 98 C62 110 62 122 57 132", "M16 332 C22 328 30 329 34 335"])}
-            <path class="bd" d="M0 70 L0 222"/><ellipse class="bd-fill" cx="0" cy="176" rx="1.6" ry="2.6"/>
-            <path class="bd" d="M4 27 C8 25 13 25 14 28"/><path class="bd" d="M-4 27 C-8 25 -13 25 -14 28"/><path class="bd" d="M6 32 C8 31 11 31 12 32"/><path class="bd" d="M-6 32 C-8 31 -11 31 -12 32"/><path class="bd" d="M0 31 L0 41 M-4 43 C-2 45 2 45 4 43 M-6 51 C-2 53 2 53 6 51"/>
-            <ellipse class="bd bd-soft" cx="24" cy="341" rx="6.5" ry="5.5"/><ellipse class="bd bd-soft" cx="-24" cy="341" rx="6.5" ry="5.5"/>
-            <path class="bh" d="M-14 100 C-6 106 6 106 14 100"/>${lines(["M26 98 C34 104 40 112 44 122", "M70 104 C74 116 74 128 71 140", "M27 284 C30 298 30 308 27 320"], "bh")}
-          </g>
-          <g clip-path="url(#fr-body)">${zoneSet(B, ["chest", "waist"], [], "fr-body")}${bandZone("thighs", B.thighs, true)}</g>
-          <path class="bs" d="${mir(S.arm)}"/><path class="bs" d="${S.arm}"/>
-          <g class="bd-wrap">${lines(["M68 120 C71 134 71 148 68 160", "M62 178 C67 181 72 181 76 178", "M68 192 C69 210 67 226 64 244"])}</g>
-          <g clip-path="url(#fr-arms)">${bandZone("shoulders", B.shoulders, true)}${bandZone("arms", B.arms, true)}</g>
-          <rect x="-90" y="0" width="180" height="430" fill="url(#vshade)" clip-path="url(#fr-all)" pointer-events="none"/>
-        </g>
-        <text class="bcap" x="0" y="440">FRONT</text>
-      </g>`;
-
-    // ---------- BACK ----------
-    const backAll = frontAll;
-    const back = `
-      <g transform="translate(490 0)">
-        <ellipse cx="0" cy="424" rx="64" ry="7" fill="url(#floorG)"/>
-        ${clips("bk", `<path d="${backAll}"/>`, cp([both(S.torso), S.leg, mir(S.leg), both(S.head), both(S.neck)]), cp([S.arm, mir(S.arm), S.hand, mir(S.hand)]))}
-        <g class="bfig">
-          ${limb(S.leg, "bs")}${limb(S.foot, "bs")}
-          <path class="bs" d="${both(S.neck)}"/><path class="bs" d="${both(S.head)}"/>
-          <ellipse class="bs" cx="-19.5" cy="34" rx="2.6" ry="5.4"/><ellipse class="bs" cx="19.5" cy="34" rx="2.6" ry="5.4"/>
-          <path class="bs" d="${both(S.torso)}"/>
-          <path class="brf" d="${both(S.briefB)}"/>
-          ${limb(S.hand, "bs")}
-          <g class="bd-wrap">
-            <path class="bd" d="M0 70 L0 222"/>
-            ${lines(["M10 76 C24 96 36 112 44 128", "M3 82 C16 100 28 116 36 128", "M12 100 C24 98 36 106 36 122 C32 130 20 130 14 122", "M46 134 C42 156 32 178 20 198", "M49 120 C52 112 54 104 55 98", "M26 262 C34 282 34 304 28 326", "M12 264 C17 286 19 308 15 330", "M14 336 C22 340 32 340 36 336", "M18 348 C13 362 15 380 20 394", "M32 348 C38 362 36 380 31 394", "M21 396 L22 406", "M68 192 C69 210 67 226 64 244"])}
-            <path class="bd" d="M-14 42 C-8 50 8 50 14 42"/>
-            ${lines(["M20 240 C28 232 38 232 44 240", "M26 268 C28 286 28 304 25 322"], "bh")}
-          </g>
-          <g clip-path="url(#bk-body)">${zoneSet(B, ["chest", "waist"], [], "bk-body")}${bandZone("thighs", B.thighs, true)}</g>
-          <path class="bs" d="${mir(S.arm)}"/><path class="bs" d="${S.arm}"/>
-          <g class="bd-wrap">${lines(["M68 124 C72 138 72 152 68 166", "M68 192 C69 210 67 226 64 244"])}</g>
-          <g clip-path="url(#bk-arms)">${bandZone("shoulders", B.shoulders, true)}${bandZone("arms", B.arms, true)}</g>
-          <rect x="-90" y="0" width="180" height="430" fill="url(#vshade)" clip-path="url(#bk-all)" pointer-events="none"/>
-        </g>
-        <text class="bcap" x="0" y="440">BACK</text>
-      </g>`;
-
-    // ---------- SIDE ----------
-    const side = `
-      <g transform="translate(300 0)">
-        <ellipse cx="0" cy="424" rx="60" ry="7" fill="url(#floorG)"/>
-        ${clips("sd", `<path d="${SIDE.body} ${SIDE.arm} ${SIDE.hand}"/>`, cp([SIDE.body]), cp([SIDE.arm, SIDE.hand]))}
-        <g class="bfig">
-          <path class="bs bsS" d="${SIDE.body}"/>
-          <path class="brf" d="${SIDE.brief}"/>
-          <g class="bd-wrap">
-            <ellipse class="bd-fill" cx="-8" cy="27" rx="1.5" ry="1.2"/><ellipse class="bd bd-soft" cx="5" cy="34" rx="3" ry="5.5"/>
-            ${["M-10 54 C-2 57 6 55 11 50", "M-8 62 C-2 70 6 76 12 82", "M-40 130 C-30 141 -20 139 -12 131", "M-28 152 C-30 172 -29 192 -27 206", "M32 214 C40 224 40 240 34 254", "M33 268 C33 290 31 310 29 326", "M-22 266 C-26 288 -26 310 -23 330", "M31 352 C34 364 32 378 27 394", "M-16 352 C-17 370 -16 384 -15 398", "M-16 100 C-28 110 -34 122 -34 132"].map((d) => `<path class="bd" d="${d}"/>`).join("")}
-            <ellipse class="bd bd-soft" cx="-20" cy="338" rx="5" ry="6.5"/>
-          </g>
-          <g clip-path="url(#sd-body)">${zoneSet(SB, ["chest", "waist", "thighs"], [], "sd-body")}</g>
-          <path class="bs bsS" d="${SIDE.arm}"/><path class="bs bsS" d="${SIDE.hand}"/>
-          <g class="bd-wrap">${["M8 112 C10 130 10 146 9 160", "M-9 120 C-12 134 -11 148 -10 160", "M-10 172 C-2 175 6 175 11 172", "M-4 192 C-4 212 -3 230 -2 246"].map((d) => `<path class="bd" d="${d}"/>`).join("")}</g>
-          <g clip-path="url(#sd-arms)">${zoneSet(SB, ["shoulders", "arms"], [], "sd-arms")}</g>
-          <rect x="-90" y="0" width="180" height="430" fill="url(#vshade)" clip-path="url(#sd-all)" pointer-events="none"/>
-        </g>
-        <text class="bcap" x="0" y="440">SIDE</text>
-      </g>`;
-
     const chips = BODY_PARTS.map((p) => {
       const has = v[p.key] != null;
       return `<button type="button" class="bchip-btn${has ? " has" : ""}${ask === p.key ? " ask" : ""}" data-part="${p.key}"><span>${p.label}</span><b>${has ? v[p.key] + " cm" : "+ add"}</b></button>`;
     }).join("");
 
-    el.innerHTML = `
-      <svg viewBox="0 0 600 446" class="body-svg body-3" role="img" aria-label="Body measurements map — front, side and back views">${defs}${front}${side}${back}</svg>
-      <div class="bchips" id="body-chips">${chips}</div>`;
-
-    el.querySelectorAll("[data-part]").forEach((n) => {
+    const wire = (root) => root.querySelectorAll("[data-part]").forEach((n) => {
       const open = () => { if (!this.wiz) this.startWizard([n.dataset.part]); else this.gotoWizardPart(n.dataset.part); };
       n.addEventListener("click", open);
       n.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
     });
+    // gender first: the mesh (and where the rings sit) depends on it
+    if (!this.gender) {
+      this._b3d?.dispose(); this._b3d = null;
+      el.innerHTML = `<div class="gender-pick"><h4>First, pick the body type</h4><p class="muted small">Michi shows a matching 3D body, so your measurements land in the right place. You can change it any time.</p>
+        <div class="gender-btns"><button type="button" class="gender-btn" data-g="male"><span>♂</span>Male</button><button type="button" class="gender-btn" data-g="female"><span>♀</span>Female</button></div></div>`;
+      el.querySelectorAll("[data-g]").forEach((b) => (b.onclick = async () => { this.gender = b.dataset.g; await BodyGender.set(await DB.currentUser(), this.gender); this.renderBodyMap(); }));
+      return;
+    }
+    const host3d = el.querySelector("#body3d");
+    if (host3d && this._b3d && host3d.isConnected) {                 // already mounted: just refresh rings + chips
+      el.querySelector("#body-chips").innerHTML = chips; wire(el.querySelector("#body-chips")); this._b3d.update(v, ask); return;
+    }
+    el.innerHTML = `<div id="body3d" class="body3d"></div>
+      <p class="muted small body3d-help">Drag to turn the body · tap a ring or a body part to measure it · <button type="button" class="link-btn" id="gender-change">${this.gender === "male" ? "Male" : "Female"} (change)</button></p>
+      <div class="bchips" id="body-chips">${chips}</div>
+      <p class="idc-credit">3D bodies (simplified): <a href="https://sketchfab.com/3d-models/female-body-base-mesh-4bd94f4c0406464c91fdf55db6ca8d18" target="_blank" rel="noopener">Female body base mesh</a> by gus_thewise · <a href="https://sketchfab.com/3d-models/male-body-base-mesh-highpoly-9311f4f8fa1a4fe4bb0027ff7e8fd795" target="_blank" rel="noopener">Male body base mesh</a> by Mandrake · <a href="http://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a></p>`;
+    wire(el);
+    el.querySelector("#gender-change").onclick = async () => { this.gender = this.gender === "male" ? "female" : "male"; await BodyGender.set(await DB.currentUser(), this.gender); this._b3d?.setGender(this.gender); el.querySelector("#gender-change").textContent = `${this.gender === "male" ? "Male" : "Female"} (change)`; };
+    const mountIt = () => { this._b3d?.dispose(); this._b3d = window.Body3D.mount(el.querySelector("#body3d"), { gender: this.gender, values: v, ask, onPick: (k) => { if (!this.wiz) this.startWizard([k]); else this.gotoWizardPart(k); } }); };
+    if (window.Body3D) mountIt(); else document.addEventListener("body3d-ready", mountIt, { once: true });
   },
 
   // ---- weighing scale: the needle is a real spring, the number follows it ----
@@ -684,6 +568,16 @@ const WORKOUT_TYPES = [
   ["Cardio", ["Running", "Walking", "Cycling", "Swimming", "HIIT", "Jump rope", "Cardio (general)"]],
   ["Other", ["Calisthenics", "Yoga", "Mobility / Stretching", "Sports", "Martial arts", "Other"]],
 ];
+
+const BodyGender = {
+  key: (uid) => `gender:${uid}`,
+  async get(user) {
+    let g = null; try { g = localStorage.getItem(this.key(user.id)); } catch {}
+    if (!g) { try { const { data } = await DB.client.from("profiles").select("gender").eq("id", user.id).maybeSingle(); g = data?.gender || null; if (g) localStorage.setItem(this.key(user.id), g); } catch {} }
+    return g === "male" || g === "female" ? g : null;
+  },
+  async set(user, g) { try { localStorage.setItem(this.key(user.id), g); } catch {} try { await DB.client.from("profiles").update({ gender: g }).eq("id", user.id); } catch {} },
+};
 
 const BODY_PARTS = [
   { key: "shoulders", label: "Shoulders", unit: "cm", ask: "Measure your shoulders", hint: "Stand tall and relaxed. Wrap the tape around the widest point of your shoulders, over the deltoids." },

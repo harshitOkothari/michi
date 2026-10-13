@@ -74,52 +74,48 @@ const Profile = {
 
   // ---- ID card (front/back) + friends leaderboard ----
   weekStart() { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d; },   // Monday 00:00 local
-  async fillCard({ user, profile, streak, totalXP, progress, settings }) {
-    const host = document.getElementById("my-idc"); if (!host) return;
-    const ws = Profile.weekStart(), we = new Date(+ws + 7 * 864e5);
-    const days = [0, 0, 0, 0, 0, 0, 0];
+  // everything the card needs (fetches what isn't passed in)
+  async buildCard(user, ctx = {}) {
+    const ws = Profile.weekStart(), we = new Date(+ws + 7 * 864e5), days = [0, 0, 0, 0, 0, 0, 0];
+    const [profile, streak, totalXP, settings] = await Promise.all([
+      ctx.profile ?? DB.client.from("profiles").select("*").eq("id", user.id).maybeSingle().then((r) => r.data),
+      ctx.streak ?? DB.client.from("streaks").select("*").eq("user_id", user.id).maybeSingle().then((r) => r.data),
+      ctx.totalXP ?? getTotalXP(), ctx.settings ?? DB.getSettings(),
+    ]);
+    const progress = ctx.progress || xpProgress(totalXP);
     try {
       const { data } = await DB.client.from("study_sessions").select("start_time,duration_sec").eq("user_id", user.id).gte("start_time", ws.toISOString()).lt("start_time", we.toISOString());
-      (data || []).forEach((s) => { days[(new Date(s.start_time).getDay() + 6) % 7] += s.duration_sec || 0; });
+      (data || []).forEach((r) => { days[(new Date(r.start_time).getDay() + 6) % 7] += r.duration_sec || 0; });
     } catch (e) { /* offline: card still shows */ }
     let board = null;
     try { const r = await DB.client.rpc("friends_week", { week_start: ws.toISOString() }); if (!r.error) board = r.data; } catch (e) { /* phase4.sql not run yet */ }
-    const weekSec = days.reduce((a, b) => a + b, 0);
     const meIdx = board ? board.findIndex((r) => r.is_me) : -1;
     const card = {
       name: profile?.name, email: profile?.email || user.email, avatar: profile?.avatar_url, seed: user.id, code: profile?.friend_code,
       joined: user.created_at ? new Date(user.created_at).toLocaleDateString("en-IN", { month: "short", year: "numeric" }) : "",
       level: progress.level, xp: totalXP, xpPct: progress.progressPct, streak: effectiveStreak(streak, settings),
-      weekSec, days, rank: meIdx >= 0 ? meIdx + 1 : 1, rankOf: board ? board.length : 1,
+      weekSec: days.reduce((x, y) => x + y, 0), days, rank: meIdx >= 0 ? meIdx + 1 : 1, rankOf: board ? board.length : 1,
     };
+    return { card, board };
+  },
+  async fillCard(ctx) {
+    const host = document.getElementById("my-idc"); if (!host) return;
+    const { card } = await Profile.buildCard(ctx.user, ctx);
     const was = host.querySelector(".idc-flip")?.classList.contains("is-flipped");
     host.innerHTML = IDCard.html(card);
     if (was) host.querySelector(".idc-flip").classList.add("is-flipped");
     IDCard.crane(host.querySelector(".idc-wrap"));
-    Profile.drawFriends(board, card);
   },
-  drawFriends(board, card) {
-    const body = document.getElementById("friends-body"); if (!body) return;
-    const e = IDCard.esc, code = card.code || IDCard.code(card.seed);
-    if (!board) { body.innerHTML = `<p class="fr-note">Friends need a one-time setup: run <b>sql/phase4.sql</b> in Supabase (SQL Editor). After that you can add friends here.</p>`; return; }
-    const max = Math.max(1, ...board.map((r) => r.week_sec));
-    const rows = board.map((r, i) => `<li class="fr-row ${r.is_me ? "me" : ""}"><span class="fr-pos">${i + 1}</span>
-        <span class="fr-av">${r.avatar_url ? `<img src="${e(r.avatar_url)}" alt="" />` : e((r.name || "?")[0].toUpperCase())}</span>
-        <span class="fr-main"><div class="fr-name">${e(r.name || "Student")}${r.is_me ? " (you)" : ""}</div><div class="fr-bar"><u style="width:${Math.round((r.week_sec / max) * 100)}%"></u></div></span>
-        <span class="fr-time">${IDCard.hm(r.week_sec)}<small>${r.streak}d streak${r.is_me ? "" : ` <button class="fr-x" data-rm="${r.user_id}" aria-label="Remove friend" title="Remove friend">×</button>`}</small></span></li>`).join("");
-    body.innerHTML = `<ul class="fr-list">${rows}</ul>
-      ${board.length < 2 ? `<p class="fr-note">No friends yet. Share your code <b>${e(code)}</b>, or add a friend's code below.</p>` : ""}
-      <form class="fr-add" id="fr-form"><input class="input" id="fr-code" placeholder="Friend code (MCH-XXXX-XX)" autocomplete="off" maxlength="14" /><button class="btn btn-primary" type="submit">Add</button><button class="btn btn-ghost" type="button" id="fr-copy">Copy my code</button></form>`;
-    document.getElementById("fr-copy").onclick = async () => { try { await navigator.clipboard.writeText(code); toast("Your code is copied."); } catch (er) { toast(code); } };
-    document.getElementById("fr-form").onsubmit = async (ev) => {
-      ev.preventDefault(); const v = document.getElementById("fr-code").value.trim(); if (!v) return;
-      const { data, error } = await DB.client.rpc("add_friend", { code: v });
-      if (error || !data?.ok) return toast(data?.error || "Couldn't add that friend.", "error");
-      toast(`${data.name || "Friend"} added.`); Profile.render();
-    };
-    body.querySelectorAll("[data-rm]").forEach((b) => (b.onclick = async () => { if (!confirm("Remove this friend?")) return; await DB.client.rpc("remove_friend", { fid: b.dataset.rm }); Profile.render(); }));
+  // sidebar name/photo -> only the card (not Settings)
+  async openCard() {
+    const user = await DB.currentUser(); if (!user) return;
+    openModal(`<div class="idc-modal"><button class="idc-modal-x" id="idc-modal-x" aria-label="Close">×</button><div id="idc-modal-body"><p class="fr-note" style="text-align:center">Loading your card…</p></div></div>`);
+    document.getElementById("idc-modal-x").onclick = closeModal;
+    const { card } = await Profile.buildCard(user);
+    const body = document.getElementById("idc-modal-body"); if (!body) return;
+    body.innerHTML = IDCard.html(card);
+    IDCard.crane(body.querySelector(".idc-wrap"));
   },
-
   async render() {
     const user = await DB.currentUser();
     if (!user) return;
@@ -145,7 +141,7 @@ const Profile = {
         <div id="my-idc"></div>
         <p class="idc-credit">Crane: “3D Origami crane” by <a href="https://sketchfab.com/juang3d" target="_blank" rel="noopener">JuanG3D</a> · <a href="http://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a></p>
       </div>
-      <div class="panel" id="friends-panel"><div class="fr-head"><h3>Friends this week</h3></div><div id="friends-body"><p class="fr-note">Loading…</p></div></div>
+      <div class="panel"><p class="muted small" style="margin:0">Friends and their weekly hours now live on their own page — <button class="link-btn" type="button" onclick="go('friends')">open Friends</button>.</p></div>
 
       <div class="panel profile-panel">
         <div class="profile-top">

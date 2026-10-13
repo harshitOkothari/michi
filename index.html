@@ -16,6 +16,7 @@
 <link rel="stylesheet" href="css/style.css" />
 <link rel="stylesheet" href="css/landing2.css" />
 <link rel="stylesheet" href="css/idcard.css" />
+<link rel="stylesheet" href="css/features.css" />
 <link rel="preload" href="assets/katana.glb" as="fetch" crossorigin />
 <link rel="preload" href="js/bundle.js" as="script" />
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
@@ -212,7 +213,7 @@
     </div>
   </section>
 
-  <footer class="ld-foot"><span class="ld-credit" style="display:block;font-size:11px;opacity:.6;margin-bottom:8px">Crane model “3D Origami crane” by <a href="https://sketchfab.com/juang3d" target="_blank" rel="noopener">JuanG3D</a> · <a href="http://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a></span><span class="hanko sm">M</span> Michi <span>·</span> <a href="terms.html">Terms &amp; Conditions</a> <span>·</span> <a href="terms.html#privacy">Privacy</a></footer>
+  <footer class="ld-foot"><span class="ld-credit" style="display:block;font-size:11px;opacity:.6;margin-bottom:8px">Crane model “3D Origami crane” by <a href="https://sketchfab.com/juang3d" target="_blank" rel="noopener">JuanG3D</a> · <a href="http://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a> · Body meshes by gus_thewise &amp; Mandrake (CC BY 4.0, simplified)</span><span class="hanko sm">M</span> Michi <span>·</span> <a href="terms.html">Terms &amp; Conditions</a> <span>·</span> <a href="terms.html#privacy">Privacy</a></footer>
 </div>
 
 <!-- ================= APP SHELL ================= -->
@@ -220,11 +221,11 @@
   <aside class="sidebar">
     <div class="sidebar-head">
       <div class="sidebar-brand"><span class="hanko">M</span><b>Michi</b></div>
-      <button class="sidebar-profile" id="sidebar-profile-btn" data-page="settings">
+      <button class="sidebar-profile" id="sidebar-profile-btn" title="Open my ID card">
         <span class="sidebar-avatar" id="sidebar-avatar">👤</span>
         <span class="sidebar-profile-text">
           <span class="sidebar-profile-name" id="sidebar-profile-name">Account</span>
-          <span class="sidebar-profile-sub">View profile</span>
+          <span class="sidebar-profile-sub">View my ID card</span>
         </span>
       </button>
     </div>
@@ -240,6 +241,7 @@
       <button class="nav-item" data-page="milestones"><span class="nav-label">Milestones</span><span class="jp" aria-hidden="true">節</span></button>
       <button class="nav-item" data-page="skills"><span class="nav-label">Skills</span><span class="jp" aria-hidden="true">技</span></button>
       <button class="nav-item" data-page="calendar"><span class="nav-label">Calendar</span><span class="jp" aria-hidden="true">暦</span></button>
+      <button class="nav-item" data-page="friends"><span class="nav-label">Friends</span><span class="jp" aria-hidden="true">友</span></button>
       <button class="nav-item" data-page="games"><span class="nav-label">Games</span><span class="jp" aria-hidden="true">遊</span></button>
       <button class="nav-item" data-page="settings"><span class="nav-label">Settings</span><span class="jp" aria-hidden="true">設</span></button>
       <button class="nav-item nav-item-admin hidden" id="nav-admin-btn" data-page="admin"><span class="nav-label">Admin</span><span class="jp" aria-hidden="true">管</span></button>
@@ -268,6 +270,7 @@
     <div id="page-milestones" class="page hidden"></div>
     <div id="page-skills" class="page hidden"></div>
     <div id="page-calendar" class="page hidden"></div>
+    <div id="page-friends" class="page hidden"></div>
     <div id="page-games" class="page hidden"></div>
     <div id="page-settings" class="page hidden"></div>
     <div id="page-admin" class="page hidden"></div>
@@ -291,6 +294,7 @@
 <script src="js/idcard.js" defer></script>
 <script type="module" src="js/katana3d.js"></script>
 <script type="module" src="js/crane3d.js"></script>
+<script type="module" src="js/body3d.js"></script>
 <script src="js/bundle.js" defer></script>
 </body>
 </html>

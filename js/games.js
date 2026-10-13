@@ -16,9 +16,13 @@ const Games = {
       <div class="games-grid">
         <div class="panel game-card"><h3>Memory Match</h3><p class="game-sub">Flip two cards at a time and find all the matching study icons in as few moves as you can.</p><div id="kana"></div></div>
         <div class="panel game-card"><h3>Torii Reflex</h3><p class="game-sub">Wait for the gate to turn red, then tap as fast as you can.</p><div id="reflex"></div></div>
+        <div class="panel game-card"><h3>Slash Rush <small>斬</small></h3><p class="game-sub">Swipe through the falling sakura. Never touch the oni. Gets faster as you score.</p><div id="slash"></div></div>
+        <div class="panel game-card"><h3>Stone Stack <small>石</small></h3><p class="game-sub">Tap to drop each stone onto the last. Stack the tower as high as your focus lasts.</p><div id="stones"></div></div>
+        <div class="panel game-card"><h3>Math Sprint <small>算</small></h3><p class="game-sub">Sixty seconds of quick sums. Streaks buy you time. Great warm-up for any entrance exam.</p><div id="sprint"></div></div>
+        <div class="panel game-card"><h3>Maxim Match <small>法</small></h3><p class="game-sub">Latin legal maxims — pick the right meaning. CLAT favourites.</p><div id="maxims"></div></div>
         <div class="panel game-card"><h3>Breathe</h3><p class="game-sub">Box breathing: in, hold, out, hold — four seconds each. Calms exam nerves.</p><div id="breath"></div></div>
       </div>`;
-    this.kana(); this.reflex(); this.breath();
+    this.kana(); this.reflex(); this.slash(); this.stones(); this.sprint(); this.maxims(); this.breath();
   },
 
   // ---- 1. Kana memory ----

@@ -8,7 +8,7 @@
 set -e
 cd "$(dirname "$0")"
 
-ORDER="db xp ui fx themes floattimer nudges auth profile admin games goals tests study tasks taskimport milestones fitness skills calendar history analysis dashboard app"
+ORDER="db xp ui fx themes floattimer nudges auth profile friends admin games games2 games3 goals tests study tasks taskimport milestones fitness skills calendar history analysis dashboard app"
 OUT=js/bundle.js
 TMP=js/.bundle.tmp.js
 

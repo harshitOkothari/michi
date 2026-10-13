@@ -162,7 +162,7 @@ const Calendar = {
     const parts = [
       section("Tasks", tasks.data || [], (t) => `<div class="mini-row"><span>${t.status === "completed" ? "✅" : "⬜"} ${escapeHtml(t.title)}</span><span class="muted">${escapeHtml(t.category || "")}</span></div>`),
       section("Tests", tests.data || [], (t) => `<div class="mini-row"><span>${escapeHtml(t.name)}</span><span>${t.total_marks ? pct(t.marks_obtained, t.total_marks) + "%" : "—"}</span></div>`),
-      section("Study Sessions", sessions.data || [], (s) => `<div class="mini-row"><span>${escapeHtml(s.topic_text || "Study session")}</span><span>${fmtDuration(s.duration_sec)}</span></div>`),
+      section("Study Sessions", sessions.data || [], (s) => `<div class="mini-row"><span>${escapeHtml(s.topic_text || "Study session")}</span><span>${fmtDuration(s.duration_sec)}</span><button class=\"rec-del\" type=\"button\" data-del-kind=\"session\" data-del-id=\"${s.id}\" title=\"Delete (asks for your password)\" aria-label=\"Delete this session\">🗑</button></div>`),
       section("Pomodoros", pomos.data || [], (p) => `<div class="mini-row"><span>${escapeHtml(p.topic_text || "Pomodoro")}</span><span>${p.duration_min} min</span></div>`),
       section("Workouts", workouts.data || [], (w) => `<div class="mini-row"><span>${escapeHtml(w.workout_type || "Workout")}</span></div>`),
       section("Milestone Deadlines", milestones.data || [], (g) => `<div class="mini-row"><span>${escapeHtml(g.title)}</span><span>${g.progress}%</span></div>`),

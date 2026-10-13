@@ -22,6 +22,7 @@ async function go(page) {
   else if (page === "calendar") await Calendar.render();
   else if (page === "history") await History.render();
   else if (page === "analysis") await Analysis.render();
+  else if (page === "friends") await Friends.render();
   else if (page === "games") Games.render();
   else if (page === "settings") await Profile.render();
   else if (page === "admin") await Admin.render();
@@ -31,7 +32,7 @@ function initNav() {
   document.querySelectorAll(".nav-item[data-page]").forEach((item) => {
     item.addEventListener("click", () => go(item.dataset.page));
   });
-  document.getElementById("sidebar-profile-btn")?.addEventListener("click", () => go("settings"));
+  document.getElementById("sidebar-profile-btn")?.addEventListener("click", () => Profile.openCard());
   document.getElementById("logout-btn")?.addEventListener("click", async () => {
     await Auth.signOut();
   });
@@ -42,7 +43,7 @@ function openMobileMoreMenu() {
   const pages = [
     ["goals", "Goals"], ["tests", "Tests"], ["fitness", "Fitness"],
     ["milestones", "Milestones"], ["skills", "Skills"], ["calendar", "Calendar"],
-    ["history", "History"], ["games", "Games"], ["settings", "Settings"],
+    ["history", "History"], ["friends", "Friends"], ["games", "Games"], ["settings", "Settings"],
   ];
   const adminRow = Admin.isAdmin ? `<button class="more-menu-item" data-page="admin">Admin</button>` : "";
   openModal(`
@@ -160,7 +161,7 @@ function initThemeToggle() {
   const saved = localStorage.getItem("theme") || (systemDark ? "dark" : "light");
   applyTheme(saved);
   document.getElementById("theme-toggle")?.addEventListener("click", () => {
-    const current = localStorage.getItem("theme") || "light";
+    const current = document.documentElement.getAttribute("data-theme") || "light";   // the page itself is the source of truth
     const next = current === "dark" ? "light" : "dark";
     localStorage.setItem("theme", next);
     applyTheme(next, true);

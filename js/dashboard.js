@@ -32,7 +32,7 @@ const DASH_WIDGETS = {
   activity: { title: "Recent Activity", el: "recent-activity" },
   quote: { title: "Daily Push", el: "w-quote" },
 };
-const DASH_ORDER = Object.keys(DASH_WIDGETS);
+const DASH_ORDER = ["quote", ...Object.keys(DASH_WIDGETS).filter((k) => k !== "quote")];
 const PUSH_LINES = [
   "Small steps, every day. That's the whole secret.", "Future you is watching. Make them proud.", "Done is better than perfect. Start the timer.",
   "One focused hour beats five distracted ones.", "You don't need motivation — you need the next tiny step.", "Consistency is quiet, and it wins.",
@@ -81,8 +81,10 @@ const Dashboard = {
   layout(uid) {
     let l = {};
     try { l = JSON.parse(localStorage.getItem(`dash:layout:${uid}`)) || {}; } catch {}
-    const order = (l.order || []).filter((id) => DASH_WIDGETS[id]);
+    let order = (l.order || []).filter((id) => DASH_WIDGETS[id]);
     DASH_ORDER.forEach((id) => { if (!order.includes(id)) order.push(id); });
+    let moved = false; try { moved = localStorage.getItem(`dash:pushtop:${uid}`) === "1"; } catch {}
+    if (!moved) { order = ["quote", ...order.filter((id) => id !== "quote")]; try { localStorage.setItem(`dash:pushtop:${uid}`, "1"); l.order = order; localStorage.setItem(`dash:layout:${uid}`, JSON.stringify({ ...l, order })); } catch {} }
     return { order, hidden: (l.hidden || []).filter((id) => DASH_WIDGETS[id]), quick: (l.quick || QUICK_DEFAULT).filter((id) => QUICK[id]) };
   },
   saveLayout(uid, l) { try { localStorage.setItem(`dash:layout:${uid}`, JSON.stringify(l)); } catch {} },
@@ -243,11 +245,20 @@ const Dashboard = {
       <p class="muted small" style="text-align:center;margin-top:10px">${n} of 7 days active</p>`;
   },
 
+  // Daily Push stays covered until you move over it (tap on phones). Once uncovered it stays visible for the rest of the day;
+  // tomorrow it is covered again with a new line.
   renderQuote() {
     const el = document.getElementById("w-quote");
     if (!el) return;
     const day = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0)) / 864e5);
-    el.innerHTML = `<p class="push-line">“${PUSH_LINES[day % PUSH_LINES.length]}”</p>`;
+    const key = `push:seen:${DB._user?.id || "x"}`, today = todayStr();
+    let seen = false; try { seen = localStorage.getItem(key) === today; } catch {}
+    el.innerHTML = `<div class="push-box${seen ? " revealed" : ""}" tabindex="0" role="button" aria-label="Today's push — move over it to read">
+      <p class="push-line">“${PUSH_LINES[day % PUSH_LINES.length]}”</p>
+      <div class="push-cover"><span class="push-kanji">今日</span><b>Today's push</b><small>Move your cursor here to uncover it</small></div></div>`;
+    const box = el.querySelector(".push-box");
+    const reveal = () => { if (box.classList.contains("revealed")) return; box.classList.add("revealed"); try { localStorage.setItem(key, today); } catch {} };
+    box.addEventListener("pointerenter", reveal); box.addEventListener("pointerdown", reveal); box.addEventListener("focus", reveal);
   },
 
   async renderWeeklyStudy(user) {

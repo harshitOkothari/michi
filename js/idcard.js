@@ -12,6 +12,7 @@ const IDCard = {
     let r = T[0]; for (const t of T) if (level >= t[0]) r = t; return r;
   },
   hm(sec) { sec = Math.max(0, Math.round(sec || 0)); const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60); return h ? `${h}h ${String(m).padStart(2, "0")}m` : `${m}m`; },
+  bars(seed) { let h = 5; for (const c of seed) h = (h * 33 + c.charCodeAt(0)) >>> 0; let out = ""; for (let i = 0; i < 46; i++) { h = (h * 1103515245 + 12345) >>> 0; out += `<i style="flex:${1 + (h >> 16) % 3}"></i>`; } return out; },
   html(d) {
     const e = this.esc, name = (d.name || "").trim() || "Your Name";
     const ini = name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "M";
@@ -25,15 +26,16 @@ const IDCard = {
       <div class="idc-scene" role="button" tabindex="0" aria-pressed="false" aria-label="Michi student ID card. Tap to flip.">
        <div class="idc-tilt"><div class="idc-flip">
         <div class="idc-face idc-front">
-          <div class="idc-pattern"></div>
-          <div class="idc-seal">道</div><div class="idc-brand gf">MICHI</div><div class="idc-tag">STUDENT ID · 学生証</div>
-          <div class="idc-chip"></div>
-          <svg class="idc-nfc" viewBox="0 0 24 24" fill="none" stroke="#d6b26e" stroke-width="1.6" stroke-linecap="round"><path d="M7 8c2 2.5 2 5.5 0 8M11 6c3.2 3.6 3.2 8.4 0 12M15 4c4.3 4.8 4.3 11.2 0 16"/></svg>
-          <div class="idc-num gf" data-f="code">${e(code.replace(/-/g, " "))}</div>
-          <div class="idc-name" data-f="name">${e(name)}</div>
-          <div class="idc-rank"><b data-f="lvl">LV ${level}</b> · ${e(title.toUpperCase())} <span>${jp}</span></div>
+          <div class="idc-pattern"></div><div class="idc-mark">道</div>
+          <div class="idc-head"><div class="idc-seal">道</div><div class="idc-brandblock"><b>MICHI</b><small>STUDENT IDENTITY CARD · 学生証</small></div></div>
+          <div class="idc-slot"></div>
           <div class="idc-photo">${d.avatar ? `<img src="${e(d.avatar)}" alt="" />` : `<span data-f="ini">${e(ini)}</span>`}</div>
-          <div class="idc-since">SINCE <b data-f="joined">${e(String(joined).toUpperCase())}</b></div>
+          <div class="idc-info">
+            <h4 class="idc-name" data-f="name">${e(name)}</h4>
+            <div class="idc-role"><b data-f="lvl">LV ${level}</b> · ${e(title)} <span>${jp}</span></div>
+            <dl><div><dt>ID NO.</dt><dd data-f="code">${e(code)}</dd></div><div><dt>JOINED</dt><dd data-f="joined">${e(String(joined).toUpperCase())}</dd></div><div><dt>STREAK</dt><dd>${d.streak ?? 0} days</dd></div></dl>
+          </div>
+          <div class="idc-barcode"><span>${this.bars(code)}</span><em data-f="code2">${e(code)}</em></div>
           <div class="idc-sheen"></div>
         </div>
         <div class="idc-face idc-back">
@@ -67,7 +69,7 @@ const IDCard = {
       const email = (q("signup-email")?.value || q("login-email")?.value || "").trim();
       const name = (q("signup-name")?.value || "").trim() || (email ? email.split("@")[0].replace(/[._-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "");
       const shown = name || "Your Name", code = this.code(email || name);
-      set("name", shown); set("ini", shown.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "M"); set("code", code.replace(/-/g, " "));
+      set("name", shown); set("ini", shown.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "M"); set("code", code); set("code2", code);
       host.querySelectorAll(".idc-back .code strong").forEach((n) => (n.textContent = code));
     };
     ["signup-name", "signup-email", "login-email"].forEach((id) => q(id)?.addEventListener("input", draw));

@@ -78,7 +78,7 @@ const Admin = {
     detailEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
 
     const profile = this.users.find((u) => u.id === userId);
-    const [{ data: streak }, goals, subjects, tests, tasks, activity, { data: totalXpRows }] = await Promise.all([
+    const [{ data: streak }, goals, subjects, tests, tasks, activity, { data: totalXpRows }, bodyRows, weekRows, privRow, friendIds] = await Promise.all([
       DB.client.from("streaks").select("*").eq("user_id", userId).single(),
       DB.client.from("goals").select("*").eq("user_id", userId).order("created_at", { ascending: true }).then((r) => r.data || []),
       DB.client.from("subjects").select("*").eq("user_id", userId).then((r) => r.data || []),
@@ -86,10 +86,22 @@ const Admin = {
       DB.client.from("tasks").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(20).then((r) => r.data || []),
       DB.client.from("activity_log").select("*").eq("user_id", userId).order("occurred_at", { ascending: false }).limit(15).then((r) => r.data || []),
       DB.client.from("xp_events").select("amount").eq("user_id", userId),
+      DB.client.from("body_measurements").select("*").eq("user_id", userId).order("measured_at", { ascending: true }).then((r) => r.data || []),
+      (() => { const ws = Profile.weekStart(); return DB.client.from("study_sessions").select("start_time,duration_sec").eq("user_id", userId).gte("start_time", ws.toISOString()).lt("start_time", new Date(+ws + 7 * 864e5).toISOString()).then((r) => r.data || []); })(),
+      DB.client.from("friend_privacy").select("*").eq("user_id", userId).maybeSingle().then((r) => r.data, () => null),
+      DB.client.from("friendships").select("friend_id").eq("user_id", userId).then((r) => (r.data || []).map((x) => x.friend_id), () => []),
     ]);
+    const friendNames = friendIds.length ? ((await DB.client.from("profiles").select("id,name,friend_code").in("id", friendIds)).data || []) : [];
 
     const totalXP = (totalXpRows || []).reduce((sum, r) => sum + r.amount, 0);
     const progress = xpProgress(totalXP);
+    const days = [0, 0, 0, 0, 0, 0, 0]; weekRows.forEach((r) => { days[(new Date(r.start_time).getDay() + 6) % 7] += r.duration_sec || 0; });
+    const cardHtml = IDCard.html({ name: profile?.name, email: profile?.email, avatar: profile?.avatar_url, seed: userId, code: profile?.friend_code,
+      joined: profile?.created_at ? new Date(profile.created_at).toLocaleDateString("en-IN", { month: "short", year: "numeric" }) : "", level: progress.level, xp: totalXP, xpPct: progress.progressPct,
+      streak: streak?.current_streak || 0, weekSec: days.reduce((a, b) => a + b, 0), days, rank: 0, rankOf: 0 });
+    const gender = profile?.gender === "female" ? "female" : profile?.gender === "male" ? "male" : null;
+    const latest = {}; BODY_PARTS.forEach((p) => { const r = [...bodyRows].reverse().find((m) => m[p.key] != null); if (r) latest[p.key] = r[p.key]; });
+    const lastWeight = [...bodyRows].reverse().find((m) => m.weight != null)?.weight;
 
     detailEl.innerHTML = `
       <div class="panel admin-detail-panel">
@@ -111,6 +123,25 @@ const Admin = {
           <div class="mini-stat"><span>Best streak</span><strong>${streak?.longest_streak || 0} days</strong></div>
         </div>
 
+        <h4 class="admin-section-title">ID card</h4>
+        <div class="admin-idc">${cardHtml}</div>
+
+        <h4 class="admin-section-title">Friends &amp; what they can see</h4>
+        <div class="admin-friends">
+          <p class="muted small">Shares with friends: ${[["show_hours", "weekly hours"], ["show_streak", "streak"], ["show_level", "level"], ["show_photo", "photo"]].map(([k, l]) => `<span class="priv-chip ${privRow?.[k] === false ? "off" : "on"}">${privRow?.[k] === false ? "✕" : "✓"} ${l}</span>`).join(" ")}</p>
+          ${friendNames.length ? friendNames.map((f) => `<div class="mini-row"><span>${escapeHtml(f.name || "Student")}</span><span class="muted small">${escapeHtml(f.friend_code || "")}</span></div>`).join("") : `<p class="empty-state">No friends added.</p>`}
+        </div>
+
+        <h4 class="admin-section-title">Body &amp; measurements</h4>
+        <div class="admin-body">
+          <div id="admin-body3d" class="body3d"></div>
+          <div class="admin-meas">
+            <p class="muted small">${gender ? `Body type: <b>${gender}</b>` : "This student hasn't picked a body type yet."}${lastWeight != null ? ` · Weight <b>${lastWeight} kg</b>` : ""}</p>
+            ${BODY_PARTS.map((p) => `<div class="mini-row"><span>${p.label}</span><span>${latest[p.key] != null ? latest[p.key] + " cm" : "—"}</span></div>`).join("")}
+            ${bodyRows.length ? `<h5 class="admin-sub">History</h5>` + [...bodyRows].reverse().slice(0, 6).map((m) => `<div class="mini-row"><span class="muted">${fmtDate(m.measured_at)}</span><span class="muted small">${BODY_PARTS.filter((p) => m[p.key] != null).map((p) => `${p.label} ${m[p.key]}`).join(" · ") || "—"}${m.weight != null ? ` · ${m.weight}kg` : ""}</span></div>`).join("") : `<p class="empty-state">No measurements logged.</p>`}
+          </div>
+        </div>
+
         <h4 class="admin-section-title">Goals &amp; Subjects</h4>
         ${goals.length ? goals.map((g) => {
           const subs = subjects.filter((s) => s.goal_id === g.id);
@@ -130,5 +161,7 @@ const Admin = {
         ${activity.length ? activity.map((a) => `<div class="mini-row"><span>${escapeHtml(a.description)}</span><span class="muted">${fmtDate(a.occurred_at)}</span></div>`).join("") : `<p class="empty-state">No activity yet.</p>`}
       </div>
     `;
+    const mountBody = () => { this._b3d?.dispose(); this._b3d = window.Body3D.mount(document.getElementById("admin-body3d"), { gender: gender || "male", values: latest, onPick: () => {} }); };
+    if (window.Body3D) mountBody(); else document.addEventListener("body3d-ready", mountBody, { once: true });
   },
 };

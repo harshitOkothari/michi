@@ -5,7 +5,7 @@
 // speeds up / offlines the UI, not your records.
 // ============================================================
 
-const CACHE_NAME = "dashboard-shell-v28";
+const CACHE_NAME = "dashboard-shell-v34";
 const SHELL_FILES = [
   "./",
   "index.html",
@@ -13,9 +13,11 @@ const SHELL_FILES = [
   "css/style.css",
   "css/landing2.css",
   "css/idcard.css",
+  "css/features.css",
   "js/idcard.js",
   "js/katana3d.js",
   "js/crane3d.js",
+  "js/body3d.js",
   "js/config.js",
   "js/bundle.js",
   "manifest.json",

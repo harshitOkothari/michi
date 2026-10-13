@@ -1963,52 +1963,48 @@ const Profile = {
 
   // ---- ID card (front/back) + friends leaderboard ----
   weekStart() { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d; },   // Monday 00:00 local
-  async fillCard({ user, profile, streak, totalXP, progress, settings }) {
-    const host = document.getElementById("my-idc"); if (!host) return;
-    const ws = Profile.weekStart(), we = new Date(+ws + 7 * 864e5);
-    const days = [0, 0, 0, 0, 0, 0, 0];
+  // everything the card needs (fetches what isn't passed in)
+  async buildCard(user, ctx = {}) {
+    const ws = Profile.weekStart(), we = new Date(+ws + 7 * 864e5), days = [0, 0, 0, 0, 0, 0, 0];
+    const [profile, streak, totalXP, settings] = await Promise.all([
+      ctx.profile ?? DB.client.from("profiles").select("*").eq("id", user.id).maybeSingle().then((r) => r.data),
+      ctx.streak ?? DB.client.from("streaks").select("*").eq("user_id", user.id).maybeSingle().then((r) => r.data),
+      ctx.totalXP ?? getTotalXP(), ctx.settings ?? DB.getSettings(),
+    ]);
+    const progress = ctx.progress || xpProgress(totalXP);
     try {
       const { data } = await DB.client.from("study_sessions").select("start_time,duration_sec").eq("user_id", user.id).gte("start_time", ws.toISOString()).lt("start_time", we.toISOString());
-      (data || []).forEach((s) => { days[(new Date(s.start_time).getDay() + 6) % 7] += s.duration_sec || 0; });
+      (data || []).forEach((r) => { days[(new Date(r.start_time).getDay() + 6) % 7] += r.duration_sec || 0; });
     } catch (e) { /* offline: card still shows */ }
     let board = null;
     try { const r = await DB.client.rpc("friends_week", { week_start: ws.toISOString() }); if (!r.error) board = r.data; } catch (e) { /* phase4.sql not run yet */ }
-    const weekSec = days.reduce((a, b) => a + b, 0);
     const meIdx = board ? board.findIndex((r) => r.is_me) : -1;
     const card = {
       name: profile?.name, email: profile?.email || user.email, avatar: profile?.avatar_url, seed: user.id, code: profile?.friend_code,
       joined: user.created_at ? new Date(user.created_at).toLocaleDateString("en-IN", { month: "short", year: "numeric" }) : "",
       level: progress.level, xp: totalXP, xpPct: progress.progressPct, streak: effectiveStreak(streak, settings),
-      weekSec, days, rank: meIdx >= 0 ? meIdx + 1 : 1, rankOf: board ? board.length : 1,
+      weekSec: days.reduce((x, y) => x + y, 0), days, rank: meIdx >= 0 ? meIdx + 1 : 1, rankOf: board ? board.length : 1,
     };
+    return { card, board };
+  },
+  async fillCard(ctx) {
+    const host = document.getElementById("my-idc"); if (!host) return;
+    const { card } = await Profile.buildCard(ctx.user, ctx);
     const was = host.querySelector(".idc-flip")?.classList.contains("is-flipped");
     host.innerHTML = IDCard.html(card);
     if (was) host.querySelector(".idc-flip").classList.add("is-flipped");
     IDCard.crane(host.querySelector(".idc-wrap"));
-    Profile.drawFriends(board, card);
   },
-  drawFriends(board, card) {
-    const body = document.getElementById("friends-body"); if (!body) return;
-    const e = IDCard.esc, code = card.code || IDCard.code(card.seed);
-    if (!board) { body.innerHTML = `<p class="fr-note">Friends need a one-time setup: run <b>sql/phase4.sql</b> in Supabase (SQL Editor). After that you can add friends here.</p>`; return; }
-    const max = Math.max(1, ...board.map((r) => r.week_sec));
-    const rows = board.map((r, i) => `<li class="fr-row ${r.is_me ? "me" : ""}"><span class="fr-pos">${i + 1}</span>
-        <span class="fr-av">${r.avatar_url ? `<img src="${e(r.avatar_url)}" alt="" />` : e((r.name || "?")[0].toUpperCase())}</span>
-        <span class="fr-main"><div class="fr-name">${e(r.name || "Student")}${r.is_me ? " (you)" : ""}</div><div class="fr-bar"><u style="width:${Math.round((r.week_sec / max) * 100)}%"></u></div></span>
-        <span class="fr-time">${IDCard.hm(r.week_sec)}<small>${r.streak}d streak${r.is_me ? "" : ` <button class="fr-x" data-rm="${r.user_id}" aria-label="Remove friend" title="Remove friend">×</button>`}</small></span></li>`).join("");
-    body.innerHTML = `<ul class="fr-list">${rows}</ul>
-      ${board.length < 2 ? `<p class="fr-note">No friends yet. Share your code <b>${e(code)}</b>, or add a friend's code below.</p>` : ""}
-      <form class="fr-add" id="fr-form"><input class="input" id="fr-code" placeholder="Friend code (MCH-XXXX-XX)" autocomplete="off" maxlength="14" /><button class="btn btn-primary" type="submit">Add</button><button class="btn btn-ghost" type="button" id="fr-copy">Copy my code</button></form>`;
-    document.getElementById("fr-copy").onclick = async () => { try { await navigator.clipboard.writeText(code); toast("Your code is copied."); } catch (er) { toast(code); } };
-    document.getElementById("fr-form").onsubmit = async (ev) => {
-      ev.preventDefault(); const v = document.getElementById("fr-code").value.trim(); if (!v) return;
-      const { data, error } = await DB.client.rpc("add_friend", { code: v });
-      if (error || !data?.ok) return toast(data?.error || "Couldn't add that friend.", "error");
-      toast(`${data.name || "Friend"} added.`); Profile.render();
-    };
-    body.querySelectorAll("[data-rm]").forEach((b) => (b.onclick = async () => { if (!confirm("Remove this friend?")) return; await DB.client.rpc("remove_friend", { fid: b.dataset.rm }); Profile.render(); }));
+  // sidebar name/photo -> only the card (not Settings)
+  async openCard() {
+    const user = await DB.currentUser(); if (!user) return;
+    openModal(`<div class="idc-modal"><button class="idc-modal-x" id="idc-modal-x" aria-label="Close">×</button><div id="idc-modal-body"><p class="fr-note" style="text-align:center">Loading your card…</p></div></div>`);
+    document.getElementById("idc-modal-x").onclick = closeModal;
+    const { card } = await Profile.buildCard(user);
+    const body = document.getElementById("idc-modal-body"); if (!body) return;
+    body.innerHTML = IDCard.html(card);
+    IDCard.crane(body.querySelector(".idc-wrap"));
   },
-
   async render() {
     const user = await DB.currentUser();
     if (!user) return;
@@ -2034,7 +2030,7 @@ const Profile = {
         <div id="my-idc"></div>
         <p class="idc-credit">Crane: “3D Origami crane” by <a href="https://sketchfab.com/juang3d" target="_blank" rel="noopener">JuanG3D</a> · <a href="http://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a></p>
       </div>
-      <div class="panel" id="friends-panel"><div class="fr-head"><h3>Friends this week</h3></div><div id="friends-body"><p class="fr-note">Loading…</p></div></div>
+      <div class="panel"><p class="muted small" style="margin:0">Friends and their weekly hours now live on their own page — <button class="link-btn" type="button" onclick="go('friends')">open Friends</button>.</p></div>
 
       <div class="panel profile-panel">
         <div class="profile-top">
@@ -2371,6 +2367,139 @@ async function updateSidebarProfile() {
   }
 }
 
+// ---- js/friends.js ----
+// ============================================================
+// FRIENDS page (code, weekly board, privacy switches)  +  SAFE DELETE (asks for your password)
+// ============================================================
+const FRIEND_PRIVACY = [
+  ["show_hours", "Study hours this week", "Your weekly total and the bar next to it"],
+  ["show_streak", "Streak", "How many days in a row you've studied"],
+  ["show_level", "Level & title", "Your level and rank title"],
+  ["show_photo", "Profile photo", "Off = friends see your initial instead"],
+];
+const FriendPrivacy = {
+  defaults: { show_hours: true, show_streak: true, show_level: true, show_photo: true },
+  async get(user) {
+    try { const { data } = await DB.client.from("friend_privacy").select("*").eq("user_id", user.id).maybeSingle(); if (data) return { ...this.defaults, ...data }; } catch {}
+    try { const l = JSON.parse(localStorage.getItem(`fp:${user.id}`) || "null"); if (l) return { ...this.defaults, ...l }; } catch {}
+    return { ...this.defaults };
+  },
+  async set(user, patch) {
+    const next = { ...(await this.get(user)), ...patch };
+    try { localStorage.setItem(`fp:${user.id}`, JSON.stringify(next)); } catch {}
+    const { error } = await DB.client.from("friend_privacy").upsert({ user_id: user.id, show_hours: next.show_hours, show_streak: next.show_streak, show_level: next.show_level, show_photo: next.show_photo, updated_at: new Date().toISOString() });
+    return !error;
+  },
+};
+
+const Friends = {
+  async render() {
+    const el = document.getElementById("page-friends"); if (!el) return;
+    const user = await DB.currentUser(); if (!user) return;
+    el.innerHTML = `<div class="page-header"><h2>Friends</h2><span class="muted">Compare your week with people you trust</span></div><div id="fr-body"><p class="fr-note">Loading…</p></div>`;
+    const ws = Profile.weekStart();
+    const [profile, priv, r] = await Promise.all([
+      DB.client.from("profiles").select("*").eq("id", user.id).maybeSingle().then((x) => x.data),
+      FriendPrivacy.get(user),
+      DB.client.rpc("friends_week", { week_start: ws.toISOString() }).then((x) => x, () => ({ error: true })),
+    ]);
+    this.draw(user, profile, priv, r.error ? null : r.data);
+  },
+  draw(user, profile, priv, board) {
+    const body = document.getElementById("fr-body"); if (!body) return;
+    const e = IDCard.esc, code = profile?.friend_code || IDCard.code(user.id), [p1, p2, p3] = code.split("-");
+    if (!board) { body.innerHTML = `<div class="panel"><p class="fr-note">Friends need a one-time setup: run <b>sql/phase4.sql</b> and then <b>sql/phase6.sql</b> in Supabase (SQL Editor), then reload this page.</p></div>`; return; }
+    const vis = board.filter((r) => r.week_sec != null), max = Math.max(1, ...vis.map((r) => r.week_sec)), medal = ["🥇", "🥈", "🥉"];
+    const rows = board.map((r, i) => {
+      const lvl = r.total_xp != null ? xpProgress(r.total_xp).level : null, title = lvl != null ? IDCard.rankTitle(lvl) : null;
+      const meta = [lvl != null ? `Lv ${lvl} · ${title[1]}` : "🔒 level hidden", r.streak != null ? `${r.streak}d streak` : "🔒 streak hidden"].join(" · ");
+      return `<li class="fr-row ${r.is_me ? "me" : ""}" style="--i:${i}"><span class="fr-pos">${r.week_sec != null ? medal[i] || i + 1 : "–"}</span>
+        <span class="fr-av">${r.avatar_url ? `<img src="${e(r.avatar_url)}" alt="" />` : e((r.name || "?")[0].toUpperCase())}</span>
+        <span class="fr-main"><div class="fr-name">${e(r.name || "Student")}${r.is_me ? ' <i class="fr-you">you</i>' : ""}</div><div class="fr-meta">${e(meta)}</div>
+          <div class="fr-bar"><u style="width:${r.week_sec != null ? Math.max(3, Math.round((r.week_sec / max) * 100)) : 0}%"></u></div></span>
+        <span class="fr-time">${r.week_sec != null ? IDCard.hm(r.week_sec) : "🔒"}<small>${r.week_sec != null ? "this week" : "hidden"}${r.is_me ? "" : ` <button class="fr-x" data-rm="${r.user_id}" aria-label="Remove friend" title="Remove friend">×</button>`}</small></span></li>`;
+    }).join("");
+    const wa = `https://wa.me/?text=${encodeURIComponent(`Join me on Michi 🗡️ add my friend code ${code} and let's compare our study hours this week.`)}`;
+    body.innerHTML = `
+      <div class="fr-pass"><div class="fr-pass-l"><small>YOUR FRIEND CODE</small>
+        <div class="fr-code"><b>${e(p1)}</b><i></i><b>${e(p2)}</b><i></i><b>${e(p3)}</b></div>
+        <p>Share it. When a friend types it, you both show up on each other's weekly board.</p></div>
+        <div class="fr-pass-r"><button class="btn btn-secondary" type="button" id="fr-copy">Copy code</button><a class="btn btn-ghost" href="${wa}" target="_blank" rel="noopener">Share on WhatsApp</a></div></div>
+      <form class="fr-join" id="fr-form" autocomplete="off"><span class="fr-pre">MCH</span>
+        <input class="fr-seg" id="fr-a" maxlength="4" autocapitalize="characters" spellcheck="false" placeholder="••••" aria-label="Friend code, first part" /><span class="fr-dash">–</span>
+        <input class="fr-seg s2" id="fr-b" maxlength="2" autocapitalize="characters" spellcheck="false" placeholder="••" aria-label="Friend code, last part" />
+        <button class="btn btn-primary" type="submit">Add friend</button></form>
+      <div class="panel"><div class="fr-head"><h3>This week</h3><span class="muted small">Monday → Sunday</span></div><ul class="fr-list">${rows}</ul>
+        ${board.length < 2 ? `<p class="fr-note">Nobody here yet. Your friends show up with their hours the moment they use your code.</p>` : ""}</div>
+      <div class="panel"><div class="fr-head"><h3>What my friends can see</h3></div>
+        <p class="muted small" style="margin:0 0 12px">Your name is always shown. Everything else is your choice. <b>Admins can always see everything</b> — that's how they help students.</p>
+        <div class="priv-list">${FRIEND_PRIVACY.map(([k, t, d]) => `<label class="priv-row"><span><b>${t}</b><small>${d}</small></span><input type="checkbox" class="switch" data-priv="${k}" ${priv[k] ? "checked" : ""} /></label>`).join("")}</div></div>`;
+    const A = document.getElementById("fr-a"), B = document.getElementById("fr-b"), clean = (v) => v.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    A.oninput = () => { A.value = clean(A.value).slice(0, 4); if (A.value.length === 4) B.focus(); };
+    B.oninput = () => { B.value = clean(B.value).slice(0, 2); };
+    B.onkeydown = (ev) => { if (ev.key === "Backspace" && !B.value) A.focus(); };
+    A.onpaste = (ev) => { const t = clean((ev.clipboardData || window.clipboardData).getData("text")); if (t.length >= 6) { ev.preventDefault(); const c = t.startsWith("MCH") ? t.slice(3) : t; A.value = c.slice(0, 4); B.value = c.slice(4, 6); B.focus(); } };
+    document.getElementById("fr-copy").onclick = async (ev) => { try { await navigator.clipboard.writeText(code); ev.target.textContent = "Copied ✓"; setTimeout(() => (ev.target.textContent = "Copy code"), 1600); } catch { toast(code); } };
+    document.getElementById("fr-form").onsubmit = async (ev) => {
+      ev.preventDefault(); const f = body.querySelector(".fr-join"), shake = () => { f.classList.add("shake"); setTimeout(() => f.classList.remove("shake"), 500); };
+      if (A.value.length < 4 || B.value.length < 2) return shake();
+      const { data, error } = await DB.client.rpc("add_friend", { code: `MCH-${A.value}-${B.value}` });
+      if (error || !data?.ok) { shake(); return toast(data?.error || "Couldn't add that friend.", "error"); }
+      toast(`${data.name || "Friend"} added 🎉`); Friends.render();
+    };
+    body.querySelectorAll("[data-rm]").forEach((b) => (b.onclick = async () => { if (!confirm("Remove this friend?")) return; await DB.client.rpc("remove_friend", { fid: b.dataset.rm }); Friends.render(); }));
+    body.querySelectorAll("[data-priv]").forEach((c) => (c.onchange = async () => {
+      const ok = await FriendPrivacy.set(user, { [c.dataset.priv]: c.checked });
+      toast(ok ? "Saved. Friends see the change right away." : "Saved on this device — run sql/phase6.sql so friends actually see it.", ok ? undefined : "error");
+    }));
+  },
+};
+
+// ---- Safe delete: removes a study session / pomodoro after re-checking the password ----
+const Safe = {
+  async hasPassword() { const { data } = await DB.client.auth.getUser(); return !!data?.user?.identities?.some((i) => i.provider === "email"); },
+  async verifyPassword(email, password) {   // checked on a throw-away client so the real login session is never touched
+    const c = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+    const { error } = await c.auth.signInWithPassword({ email, password }); return !error;
+  },
+  ask({ title, message, confirmLabel = "Delete" }) {
+    return new Promise(async (resolve) => {
+      const pw = await this.hasPassword(), { data } = await DB.client.auth.getUser(), email = data?.user?.email;
+      openModal(`<form id="safe-form"><h3>${title}</h3><p class="muted">${message}</p>
+        <label class="field-label" for="safe-input">${pw ? "Your password" : "Type DELETE to confirm"}</label>
+        <input class="input" id="safe-input" ${pw ? 'type="password" autocomplete="current-password"' : 'type="text" autocomplete="off" placeholder="DELETE"'} required />
+        <p class="safe-err" id="safe-err" role="alert"></p>
+        <div class="modal-actions"><button type="button" class="btn btn-ghost" id="safe-cancel">Cancel</button><button class="btn btn-danger" type="submit" id="safe-ok">${confirmLabel}</button></div></form>`);
+      const input = document.getElementById("safe-input"), err = document.getElementById("safe-err"); input.focus();
+      document.getElementById("safe-cancel").onclick = () => { closeModal(); resolve(false); };
+      document.getElementById("safe-form").onsubmit = async (ev) => {
+        ev.preventDefault(); const ok = document.getElementById("safe-ok"); ok.disabled = true; err.textContent = "";
+        const good = pw ? await this.verifyPassword(email, input.value) : input.value.trim().toUpperCase() === "DELETE";
+        if (!good) { err.textContent = pw ? "That password isn't right." : "Type DELETE exactly."; ok.disabled = false; input.select(); return; }
+        closeModal(); resolve(true);
+      };
+    });
+  },
+  // removes the record, the XP it earned and its activity-log line
+  async deleteRecord(kind, id) {
+    const table = kind === "pomodoro" ? "pomodoros" : "study_sessions";
+    const ok = await this.ask({ title: kind === "pomodoro" ? "Delete this Pomodoro?" : "Delete this study session?", message: "This removes the record and the XP it earned. It can't be undone. Enter your password to confirm." });
+    if (!ok) return false;
+    const user = await DB.currentUser();
+    const steps = [DB.client.from("xp_events").delete().eq("user_id", user.id).eq("ref_id", id), DB.client.from("activity_log").delete().eq("user_id", user.id).eq("ref_id", id)];
+    for (const s of steps) { const { error } = await s; if (error) { toast("Couldn't delete that record.", "error"); return false; } }
+    const { error } = await DB.client.from(table).delete().eq("user_id", user.id).eq("id", id);
+    if (error) { toast("Couldn't delete that record.", "error"); return false; }
+    DB._invalidate?.(table); toast("Record deleted."); return true;
+  },
+};
+// any list can show a trash button: <button class="rec-del" data-del-kind="session|pomodoro" data-del-id="…">
+document.addEventListener("click", async (e) => {
+  const b = e.target.closest?.(".rec-del"); if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  if (await Safe.deleteRecord(b.dataset.delKind, b.dataset.delId)) { try { closeModal(); await go(currentPage); } catch {} }
+});
+
 // ---- js/admin.js ----
 // ============================================================
 // ADMIN — read-only view across all users. Only visible to
@@ -2452,7 +2581,7 @@ const Admin = {
     detailEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
 
     const profile = this.users.find((u) => u.id === userId);
-    const [{ data: streak }, goals, subjects, tests, tasks, activity, { data: totalXpRows }] = await Promise.all([
+    const [{ data: streak }, goals, subjects, tests, tasks, activity, { data: totalXpRows }, bodyRows, weekRows, privRow, friendIds] = await Promise.all([
       DB.client.from("streaks").select("*").eq("user_id", userId).single(),
       DB.client.from("goals").select("*").eq("user_id", userId).order("created_at", { ascending: true }).then((r) => r.data || []),
       DB.client.from("subjects").select("*").eq("user_id", userId).then((r) => r.data || []),
@@ -2460,10 +2589,22 @@ const Admin = {
       DB.client.from("tasks").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(20).then((r) => r.data || []),
       DB.client.from("activity_log").select("*").eq("user_id", userId).order("occurred_at", { ascending: false }).limit(15).then((r) => r.data || []),
       DB.client.from("xp_events").select("amount").eq("user_id", userId),
+      DB.client.from("body_measurements").select("*").eq("user_id", userId).order("measured_at", { ascending: true }).then((r) => r.data || []),
+      (() => { const ws = Profile.weekStart(); return DB.client.from("study_sessions").select("start_time,duration_sec").eq("user_id", userId).gte("start_time", ws.toISOString()).lt("start_time", new Date(+ws + 7 * 864e5).toISOString()).then((r) => r.data || []); })(),
+      DB.client.from("friend_privacy").select("*").eq("user_id", userId).maybeSingle().then((r) => r.data, () => null),
+      DB.client.from("friendships").select("friend_id").eq("user_id", userId).then((r) => (r.data || []).map((x) => x.friend_id), () => []),
     ]);
+    const friendNames = friendIds.length ? ((await DB.client.from("profiles").select("id,name,friend_code").in("id", friendIds)).data || []) : [];
 
     const totalXP = (totalXpRows || []).reduce((sum, r) => sum + r.amount, 0);
     const progress = xpProgress(totalXP);
+    const days = [0, 0, 0, 0, 0, 0, 0]; weekRows.forEach((r) => { days[(new Date(r.start_time).getDay() + 6) % 7] += r.duration_sec || 0; });
+    const cardHtml = IDCard.html({ name: profile?.name, email: profile?.email, avatar: profile?.avatar_url, seed: userId, code: profile?.friend_code,
+      joined: profile?.created_at ? new Date(profile.created_at).toLocaleDateString("en-IN", { month: "short", year: "numeric" }) : "", level: progress.level, xp: totalXP, xpPct: progress.progressPct,
+      streak: streak?.current_streak || 0, weekSec: days.reduce((a, b) => a + b, 0), days, rank: 0, rankOf: 0 });
+    const gender = profile?.gender === "female" ? "female" : profile?.gender === "male" ? "male" : null;
+    const latest = {}; BODY_PARTS.forEach((p) => { const r = [...bodyRows].reverse().find((m) => m[p.key] != null); if (r) latest[p.key] = r[p.key]; });
+    const lastWeight = [...bodyRows].reverse().find((m) => m.weight != null)?.weight;
 
     detailEl.innerHTML = `
       <div class="panel admin-detail-panel">
@@ -2485,6 +2626,25 @@ const Admin = {
           <div class="mini-stat"><span>Best streak</span><strong>${streak?.longest_streak || 0} days</strong></div>
         </div>
 
+        <h4 class="admin-section-title">ID card</h4>
+        <div class="admin-idc">${cardHtml}</div>
+
+        <h4 class="admin-section-title">Friends &amp; what they can see</h4>
+        <div class="admin-friends">
+          <p class="muted small">Shares with friends: ${[["show_hours", "weekly hours"], ["show_streak", "streak"], ["show_level", "level"], ["show_photo", "photo"]].map(([k, l]) => `<span class="priv-chip ${privRow?.[k] === false ? "off" : "on"}">${privRow?.[k] === false ? "✕" : "✓"} ${l}</span>`).join(" ")}</p>
+          ${friendNames.length ? friendNames.map((f) => `<div class="mini-row"><span>${escapeHtml(f.name || "Student")}</span><span class="muted small">${escapeHtml(f.friend_code || "")}</span></div>`).join("") : `<p class="empty-state">No friends added.</p>`}
+        </div>
+
+        <h4 class="admin-section-title">Body &amp; measurements</h4>
+        <div class="admin-body">
+          <div id="admin-body3d" class="body3d"></div>
+          <div class="admin-meas">
+            <p class="muted small">${gender ? `Body type: <b>${gender}</b>` : "This student hasn't picked a body type yet."}${lastWeight != null ? ` · Weight <b>${lastWeight} kg</b>` : ""}</p>
+            ${BODY_PARTS.map((p) => `<div class="mini-row"><span>${p.label}</span><span>${latest[p.key] != null ? latest[p.key] + " cm" : "—"}</span></div>`).join("")}
+            ${bodyRows.length ? `<h5 class="admin-sub">History</h5>` + [...bodyRows].reverse().slice(0, 6).map((m) => `<div class="mini-row"><span class="muted">${fmtDate(m.measured_at)}</span><span class="muted small">${BODY_PARTS.filter((p) => m[p.key] != null).map((p) => `${p.label} ${m[p.key]}`).join(" · ") || "—"}${m.weight != null ? ` · ${m.weight}kg` : ""}</span></div>`).join("") : `<p class="empty-state">No measurements logged.</p>`}
+          </div>
+        </div>
+
         <h4 class="admin-section-title">Goals &amp; Subjects</h4>
         ${goals.length ? goals.map((g) => {
           const subs = subjects.filter((s) => s.goal_id === g.id);
@@ -2504,6 +2664,8 @@ const Admin = {
         ${activity.length ? activity.map((a) => `<div class="mini-row"><span>${escapeHtml(a.description)}</span><span class="muted">${fmtDate(a.occurred_at)}</span></div>`).join("") : `<p class="empty-state">No activity yet.</p>`}
       </div>
     `;
+    const mountBody = () => { this._b3d?.dispose(); this._b3d = window.Body3D.mount(document.getElementById("admin-body3d"), { gender: gender || "male", values: latest, onPick: () => {} }); };
+    if (window.Body3D) mountBody(); else document.addEventListener("body3d-ready", mountBody, { once: true });
   },
 };
 
@@ -2526,9 +2688,13 @@ const Games = {
       <div class="games-grid">
         <div class="panel game-card"><h3>Memory Match</h3><p class="game-sub">Flip two cards at a time and find all the matching study icons in as few moves as you can.</p><div id="kana"></div></div>
         <div class="panel game-card"><h3>Torii Reflex</h3><p class="game-sub">Wait for the gate to turn red, then tap as fast as you can.</p><div id="reflex"></div></div>
+        <div class="panel game-card"><h3>Slash Rush <small>斬</small></h3><p class="game-sub">Swipe through the falling sakura. Never touch the oni. Gets faster as you score.</p><div id="slash"></div></div>
+        <div class="panel game-card"><h3>Stone Stack <small>石</small></h3><p class="game-sub">Tap to drop each stone onto the last. Stack the tower as high as your focus lasts.</p><div id="stones"></div></div>
+        <div class="panel game-card"><h3>Math Sprint <small>算</small></h3><p class="game-sub">Sixty seconds of quick sums. Streaks buy you time. Great warm-up for any entrance exam.</p><div id="sprint"></div></div>
+        <div class="panel game-card"><h3>Maxim Match <small>法</small></h3><p class="game-sub">Latin legal maxims — pick the right meaning. CLAT favourites.</p><div id="maxims"></div></div>
         <div class="panel game-card"><h3>Breathe</h3><p class="game-sub">Box breathing: in, hold, out, hold — four seconds each. Calms exam nerves.</p><div id="breath"></div></div>
       </div>`;
-    this.kana(); this.reflex(); this.breath();
+    this.kana(); this.reflex(); this.slash(); this.stones(); this.sprint(); this.maxims(); this.breath();
   },
 
   // ---- 1. Kana memory ----
@@ -2597,6 +2763,307 @@ const Games = {
       else { document.getElementById("orb").className = "breath-orb"; document.getElementById("b-label").textContent = "Well done 🙏"; }
     };
   },
+};
+
+// ---- js/games2.js ----
+// ============================================================
+// MORE GAMES — Slash Rush · Stone Stack · Math Sprint · Maxim Match
+// (added on top of Games; best scores stay on this device)
+// ============================================================
+Games.rafs = [];
+{
+  const _stop = Games.stop;
+  Games.stop = function () { _stop.call(this); (this.rafs || []).forEach(cancelAnimationFrame); this.rafs = []; (this.ivs || []).forEach(clearInterval); this.ivs = []; };
+}
+Games.canvasGame = function (el, { title, help, draw, onStart, W = 320, H = 400 }) {
+  const best = this.best(title);
+  el.innerHTML = `<div class="game-stats"><span>Score <b id="${title}-s">0</b></span><span>Best <b id="${title}-b">${best}</b></span><span id="${title}-x"></span></div>
+    <div class="cv-wrap"><canvas width="${W * 2}" height="${H * 2}" class="game-cv"></canvas><div class="cv-over" id="${title}-o"><b>${help}</b><button class="btn btn-primary" type="button">Play</button></div></div>`;
+  const cv = el.querySelector("canvas"), g = cv.getContext("2d"), ov = el.querySelector(".cv-over");
+  g.scale(2, 2);
+  const api = { g, W, H, cv, score: 0, run: false, set(n) { api.score = n; el.querySelector(`#${title}-s`).textContent = n; }, extra(t) { el.querySelector(`#${title}-x`).textContent = t; },
+    over: (msg) => { api.run = false; const b = Math.max(best, api.score); if (api.score > Games.best(title)) Games.setBest(title, api.score); el.querySelector(`#${title}-b`).textContent = Games.best(title);
+      ov.hidden = false; ov.querySelector("b").textContent = `${msg} · score ${api.score}`; ov.querySelector("button").textContent = "Play again"; } };
+  const loop = (t) => { if (!api.run) return; draw(api, t); Games.rafs.push(requestAnimationFrame(loop)); };
+  ov.querySelector("button").onclick = () => { ov.hidden = true; api.set(0); api.run = true; onStart(api); Games.rafs.push(requestAnimationFrame(loop)); };
+  return api;
+};
+
+// ---- Slash Rush: swipe through falling sakura petals, avoid the oni masks ----
+Games.slash = function () {
+  const el = document.getElementById("slash"); if (!el) return;
+  let items = [], trail = [], parts = [], lives = 3, last = 0, spawn = 0;
+  const api = this.canvasGame(el, {
+    title: "slash", help: "Swipe through the petals 🌸 — never the oni 👹",
+    onStart(a) { items = []; trail = []; parts = []; lives = 3; spawn = 0; last = 0; a.extra("♥♥♥"); },
+    draw(a, t) {
+      const dt = Math.min(0.05, ((t - last) || 16) / 1000); last = t; const { g, W, H } = a;
+      g.fillStyle = "#17110f"; g.fillRect(0, 0, W, H);
+      spawn -= dt; if (spawn <= 0) { spawn = Math.max(0.28, 0.9 - a.score * 0.012); const bomb = Math.random() < 0.18;
+        items.push({ x: 30 + Math.random() * (W - 60), y: H + 20, vx: (Math.random() - 0.5) * 60, vy: -(520 + Math.random() * 110 + Math.min(a.score, 60) * 1.5), bomb, r: 20, a: 0, va: (Math.random() - 0.5) * 6 }); }
+      items.forEach((it) => { it.vy += 520 * dt; it.x += it.vx * dt; it.y += it.vy * dt; it.a += it.va * dt; });
+      // trail + hits
+      const tr = trail.slice(-8); for (let i = 1; i < tr.length; i++) { const p = tr[i - 1], q = tr[i];
+        items.forEach((it) => { if (it.dead) return; const dx = q.x - p.x, dy = q.y - p.y, l2 = dx * dx + dy * dy || 1, u = Math.max(0, Math.min(1, ((it.x - p.x) * dx + (it.y - p.y) * dy) / l2));
+          if (Math.hypot(it.x - (p.x + u * dx), it.y - (p.y + u * dy)) < it.r + 4) { it.dead = true;
+            for (let k = 0; k < 10; k++) parts.push({ x: it.x, y: it.y, vx: (Math.random() - 0.5) * 260, vy: (Math.random() - 0.5) * 260, l: 0.6, c: it.bomb ? "#ff4a3d" : "#f6b5c8" });
+            if (it.bomb) { lives--; a.extra("♥".repeat(Math.max(0, lives)) + "♡".repeat(3 - Math.max(0, lives))); } else a.set(a.score + 1); } }); }
+      items = items.filter((it) => !it.dead && it.y < H + 60 && !(it.y > H + 30 && it.vy > 0)); if (lives <= 0) return a.over("Cut short");
+      items.forEach((it) => { g.save(); g.translate(it.x, it.y); g.rotate(it.a); g.font = "34px serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(it.bomb ? "👹" : "🌸", 0, 0); g.restore(); });
+      parts = parts.filter((p) => (p.l -= dt) > 0); parts.forEach((p) => { p.x += p.vx * dt; p.y += p.vy * dt; g.globalAlpha = Math.max(0, p.l / 0.6); g.fillStyle = p.c; g.fillRect(p.x, p.y, 3, 3); }); g.globalAlpha = 1;
+      trail = trail.filter((p) => t - p.t < 140); g.lineCap = "round";
+      for (let i = 1; i < trail.length; i++) { g.strokeStyle = `rgba(255,240,220,${i / trail.length})`; g.lineWidth = 1 + (i / trail.length) * 5; g.beginPath(); g.moveTo(trail[i - 1].x, trail[i - 1].y); g.lineTo(trail[i].x, trail[i].y); g.stroke(); }
+    },
+  });
+  const pos = (e) => { const r = api.cv.getBoundingClientRect(); return { x: ((e.clientX - r.left) / r.width) * api.W, y: ((e.clientY - r.top) / r.height) * api.H, t: performance.now() }; };
+  let down = false; api.cv.style.touchAction = "none";
+  api.cv.addEventListener("pointerdown", (e) => { down = true; api.cv.setPointerCapture(e.pointerId); trail.push(pos(e)); });
+  api.cv.addEventListener("pointermove", (e) => { if (down && api.run) trail.push(pos(e)); });
+  api.cv.addEventListener("pointerup", () => (down = false));
+};
+
+// ---- Stone Stack: drop each stone so it lands on the last one ----
+Games.stones = function () {
+  const el = document.getElementById("stones"); if (!el) return;
+  let stack = [], cur, dir = 1, shake = 0;
+  const api = this.canvasGame(el, {
+    title: "stones", help: "Tap to drop the stone. Land it square — the overhang falls away.",
+    onStart(a) { stack = [{ x: a.W / 2 - 70, w: 140 }]; cur = { x: 0, w: 140, v: 150 }; dir = 1; },
+    draw(a, t) { const { g, W, H } = a; g.fillStyle = "#17110f"; g.fillRect(0, 0, W, H);
+      cur.x += dir * cur.v * 0.016; if (cur.x < 0) { cur.x = 0; dir = 1; } if (cur.x + cur.w > W) { cur.x = W - cur.w; dir = -1; }
+      const lift = Math.max(0, stack.length - 8) * 26, base = H - 30 + lift;
+      g.fillStyle = "#2a201d"; g.fillRect(0, H - 30 + lift, W, 40);
+      stack.forEach((s, i) => { const y = base - (i + 1) * 26; g.fillStyle = `hsl(${(i * 24) % 360} 28% ${52 - (i % 4) * 4}%)`; g.beginPath(); g.roundRect(s.x, y, s.w, 24, 6); g.fill(); });
+      const y = base - (stack.length + 1) * 26; g.fillStyle = "#e8c36a"; g.beginPath(); g.roundRect(cur.x, y, cur.w, 24, 6); g.fill(); },
+  });
+  const drop = (e) => { e.preventDefault(); if (!api.run) return; const top = stack[stack.length - 1], L = Math.max(cur.x, top.x), R = Math.min(cur.x + cur.w, top.x + top.w);
+    if (R - L < 6) return api.over("The tower fell"); const perfect = Math.abs(cur.x - top.x) < 4;
+    stack.push(perfect ? { x: top.x, w: top.w } : { x: L, w: R - L }); cur = { x: 0, w: stack[stack.length - 1].w, v: Math.min(330, 150 + stack.length * 7) }; dir = 1; api.set(stack.length - 1); if (perfect) api.extra("perfect ✦"); else api.extra(""); };
+  api.cv.addEventListener("pointerdown", drop); document.addEventListener("keydown", (e) => { if (e.code === "Space" && document.getElementById("stones")?.offsetParent && api.run) drop(e); });
+};
+
+// ---- Math Sprint: 60 seconds of quick sums (good for CLAT quant / any entrance) ----
+Games.sprint = function () {
+  const el = document.getElementById("sprint"); if (!el) return;
+  let score = 0, left = 60, streak = 0, ans = 0, tries = 0, timer;
+  const q = () => { const t = Math.random(), lv = Math.min(3, 1 + Math.floor(score / 8)); let a, b, txt, r;
+    if (t < 0.35) { a = 10 * lv + Math.floor(Math.random() * 40); b = 5 + Math.floor(Math.random() * 40); txt = `${a} + ${b}`; r = a + b; }
+    else if (t < 0.6) { a = 30 + Math.floor(Math.random() * 70); b = 3 + Math.floor(Math.random() * 28); txt = `${a} − ${b}`; r = a - b; }
+    else if (t < 0.85) { a = 3 + Math.floor(Math.random() * (7 + lv * 3)); b = 3 + Math.floor(Math.random() * 10); txt = `${a} × ${b}`; r = a * b; }
+    else { const p = [10, 20, 25, 50][Math.floor(Math.random() * 4)], n = (1 + Math.floor(Math.random() * 9)) * 20; txt = `${p}% of ${n}`; r = (p * n) / 100; }
+    const opts = new Set([r]); while (opts.size < 4) opts.add(r + (Math.floor(Math.random() * 9) - 4) * (r > 40 ? 2 : 1) || r + 7);
+    ans = r; return { txt, opts: [...opts].sort(() => Math.random() - 0.5) }; };
+  const show = () => { const x = q(); el.querySelector(".sp-q").textContent = x.txt;
+    el.querySelector(".sp-o").innerHTML = x.opts.map((o) => `<button class="sp-btn" type="button" data-v="${o}">${o}</button>`).join("");
+    el.querySelectorAll(".sp-btn").forEach((b) => (b.onclick = () => { tries++; if (Number(b.dataset.v) === ans) { score++; streak++; if (streak % 5 === 0) left += 3; b.classList.add("ok"); } else { streak = 0; left = Math.max(0, left - 2); b.classList.add("bad"); }
+      el.querySelector(".sp-s").textContent = score; setTimeout(show, 120); })); };
+  const intro = () => { clearInterval(timer); el.innerHTML = `<div class="game-stats"><span>Best <b>${Games.best("sprint")}</b></span></div><div class="cv-over static"><b>60 seconds. Right answers add points, a streak of 5 gives +3 s, a miss costs 2 s.</b><button class="btn btn-primary" type="button">Start</button></div>`; el.querySelector("button").onclick = start; };
+  const start = () => { score = 0; left = 60; streak = 0; tries = 0;
+    el.innerHTML = `<div class="game-stats"><span>Score <b class="sp-s">0</b></span><span>Time <b class="sp-t">60</b>s</span><span>Best <b>${Games.best("sprint")}</b></span></div><div class="sp-q"></div><div class="sp-bar"><u></u></div><div class="sp-o"></div>`;
+    show(); timer = setInterval(() => { left -= 1; el.querySelector(".sp-t") && (el.querySelector(".sp-t").textContent = Math.max(0, left)); el.querySelector(".sp-bar u") && (el.querySelector(".sp-bar u").style.width = Math.min(100, (left / 60) * 100) + "%");
+      if (left <= 0) { clearInterval(timer); if (score > Games.best("sprint")) Games.setBest("sprint", score);
+        el.innerHTML = `<div class="cv-over static"><b>Time! ${score} correct · ${tries ? Math.round((score / tries) * 100) : 0}% accuracy</b><button class="btn btn-primary" type="button">Again</button></div>`; el.querySelector("button").onclick = start; } }, 1000);
+    (Games.ivs = Games.ivs || []).push(timer); };
+  intro();
+};
+
+// ---- Maxim Match: legal maxims (CLAT favourites) ----
+Games.maxims = function () {
+  const el = document.getElementById("maxims"); if (!el) return;
+  const M = [["Actus non facit reum nisi mens sit rea", "An act is not guilty unless the mind is guilty"], ["Ignorantia juris non excusat", "Ignorance of the law is no excuse"], ["Res ipsa loquitur", "The thing speaks for itself"], ["Caveat emptor", "Let the buyer beware"], ["Audi alteram partem", "Hear the other side"],
+    ["Nemo judex in causa sua", "No one should be a judge in their own cause"], ["Volenti non fit injuria", "No wrong is done to one who consents"], ["Ubi jus ibi remedium", "Where there is a right, there is a remedy"], ["Pacta sunt servanda", "Agreements must be kept"], ["Injuria sine damno", "Legal wrong without actual loss"],
+    ["Damnum sine injuria", "Loss without any legal wrong"], ["Ultra vires", "Beyond one's legal powers"], ["Sub judice", "Under judicial consideration"], ["Bona fide", "In good faith"], ["Stare decisis", "To stand by decided cases"], ["Habeas corpus", "Produce the person before the court"], ["Obiter dicta", "Remarks in passing by a judge, not binding"], ["Ratio decidendi", "The reasoning on which a decision rests"], ["Mens rea", "The guilty mind"], ["Locus standi", "The right to bring a case"]];
+  let order, i, score;
+  const next = () => { if (i >= 10) { if (score > Games.best("maxims")) Games.setBest("maxims", score);
+      el.innerHTML = `<div class="cv-over static"><b>${score} / 10 correct${score === 10 ? " · flawless 🏆" : ""}</b><button class="btn btn-primary" type="button">Again</button></div>`; return (el.querySelector("button").onclick = start); }
+    const [lat, mean] = order[i], wrong = M.filter((m) => m[1] !== mean).sort(() => Math.random() - 0.5).slice(0, 2).map((m) => m[1]), opts = [mean, ...wrong].sort(() => Math.random() - 0.5);
+    el.innerHTML = `<div class="game-stats"><span>Round <b>${i + 1}</b>/10</span><span>Score <b>${score}</b></span><span>Best <b>${Games.best("maxims")}</b></span></div><div class="mx-lat">${lat}</div>
+      <div class="mx-o">${opts.map((o) => `<button type="button" class="mx-btn" data-ok="${o === mean ? 1 : 0}">${o}</button>`).join("")}</div>`;
+    el.querySelectorAll(".mx-btn").forEach((b) => (b.onclick = () => { el.querySelectorAll(".mx-btn").forEach((x) => { x.disabled = true; if (x.dataset.ok === "1") x.classList.add("ok"); }); if (b.dataset.ok === "1") score++; else b.classList.add("bad"); i++; setTimeout(next, 1100); })); };
+  const start = () => { order = [...M].sort(() => Math.random() - 0.5); i = 0; score = 0; next(); };
+  el.innerHTML = `<div class="game-stats"><span>Best <b>${Games.best("maxims")}</b></span></div><div class="cv-over static"><b>10 Latin maxims. Pick the right meaning.</b><button class="btn btn-primary" type="button">Start</button></div>`; el.querySelector("button").onclick = start;
+};
+
+// ============================================================
+// GAMES LOBBY — roomy tiles to choose from, then one focused play screen at a time
+// ============================================================
+Games.catalog = [
+  { id: "slash", jp: "斬", title: "Slash Rush", tag: "Reflex", line: "Slice the sakura. Spare the oni.", how: "Swipe across the falling petals to slice them. Touching an oni costs a life. It gets faster as you score.", c1: "#c0291f", c2: "#190b0b", init: "slash" },
+  { id: "stones", jp: "石", title: "Stone Stack", tag: "Focus", line: "Build the tower as high as your focus lasts.", how: "Tap (or press Space) to drop the stone. Land it square — any overhang falls away. Perfect drops keep the stone's full width.", c1: "#66788a", c2: "#161d28", init: "stones" },
+  { id: "sprint", jp: "算", title: "Math Sprint", tag: "Exam prep", line: "Sixty seconds of quick sums.", how: "Pick the right answer fast. A streak of 5 adds 3 seconds, a miss costs 2. A good warm-up before any entrance exam.", c1: "#d9a53b", c2: "#3a2508", init: "sprint" },
+  { id: "maxims", jp: "法", title: "Maxim Match", tag: "Exam prep", line: "Latin legal maxims, the CLAT favourites.", how: "Ten rounds. Choose the correct meaning for each maxim.", c1: "#2f7a73", c2: "#0c2423", init: "maxims" },
+  { id: "kana", jp: "記", title: "Memory Match", tag: "Focus", line: "Find every pair in the fewest moves.", how: "Flip two cards at a time and match all the study icons. Fewer moves is a better score.", c1: "#8f56a6", c2: "#1f0f2b", init: "kana", unit: "moves", low: true },
+  { id: "reflex", jp: "門", title: "Torii Reflex", tag: "Reflex", line: "Wait for the gate to turn red. Then tap.", how: "Tap too early and you lose the round. Your fastest time is saved.", c1: "#e8573f", c2: "#3a130e", init: "reflex", unit: "ms", low: true },
+  { id: "breath", jp: "息", title: "Breathe", tag: "Calm", line: "Box breathing to settle exam nerves.", how: "In, hold, out, hold — four seconds each. Follow the orb for a minute or two.", c1: "#3f86b0", c2: "#0b2132", init: "breath", noBest: true },
+];
+Games.bestText = function (g) { const b = this.best(g.id); return g.noBest ? "" : b ? `${b}${g.unit ? " " + g.unit : ""}` : "—"; };
+Games.filter = "All";
+Games.render = function () {
+  this.stop(); this.current = null;
+  const page = document.getElementById("page-games"), day = Math.floor(Date.now() / 864e5), pick = this.catalog[day % this.catalog.length];
+  const tags = ["All", ...new Set(this.catalog.map((g) => g.tag))];
+  const shown = this.catalog.filter((g) => this.filter === "All" || g.tag === this.filter);
+  page.innerHTML = `<div class="globby">
+    <header class="ghero"><div class="ghero-kanji" aria-hidden="true">遊</div>
+      <div class="ghero-text"><span class="geyebrow">道場 · BREAK ROOM</span><h2>Rest the mind.<br>Sharpen it too.</h2><p>Two minutes here, then back to the path.</p>
+        <button class="btn btn-primary ghero-btn" type="button" data-g="${pick.id}">Today's pick · ${pick.title} →</button></div></header>
+    <div class="gchips" role="tablist">${tags.map((t) => `<button type="button" class="gchip${t === this.filter ? " on" : ""}" data-tag="${t}">${t}</button>`).join("")}</div>
+    <div class="gtiles">${shown.map((g) => `<button type="button" class="gtile" data-g="${g.id}" style="--c1:${g.c1};--c2:${g.c2}">
+        <span class="gtile-kanji" aria-hidden="true">${g.jp}</span>
+        <span class="gtile-top"><span class="gtag">${g.tag}</span>${g.noBest ? "" : `<span class="gbest-chip">Best <b>${this.bestText(g)}</b></span>`}</span>
+        <span class="gtile-bot"><span class="gtile-title">${g.title}</span><span class="gtile-line">${g.line}</span><span class="gplay">Play <i>→</i></span></span></button>`).join("")}</div></div>`;
+  page.querySelectorAll("[data-g]").forEach((b) => (b.onclick = () => this.open(b.dataset.g)));
+  page.querySelectorAll("[data-tag]").forEach((b) => (b.onclick = () => { this.filter = b.dataset.tag; this.render(); }));
+};
+Games.open = function (id) {
+  const g = this.catalog.find((x) => x.id === id); if (!g) return; this.stop(); this.current = id;
+  const next = this.catalog[(this.catalog.indexOf(g) + 1) % this.catalog.length];
+  document.getElementById("page-games").innerHTML = `<div class="gstage" style="--c1:${g.c1};--c2:${g.c2}">
+    <button type="button" class="gback" id="g-back">← All games</button>
+    <header class="gstage-head"><span class="gstage-kanji" aria-hidden="true">${g.jp}</span>
+      <div><span class="geyebrow">${g.tag.toUpperCase()}</span><h2>${g.title}</h2><p>${g.line}</p></div>
+      ${g.noBest ? "" : `<div class="gstage-best"><small>BEST</small><b>${this.bestText(g)}</b></div>`}</header>
+    <section class="gstage-body"><div id="${g.id}"></div></section>
+    <p class="gstage-how"><b>How to play</b> ${g.how}</p>
+    <button type="button" class="gnext" id="g-next"><small>Next game</small><span>${next.title} <i>→</i></span></button></div>`;
+  document.getElementById("g-back").onclick = () => this.render();
+  document.getElementById("g-next").onclick = () => this.open(next.id);
+  this[g.init](); window.scrollTo({ top: 0, behavior: "smooth" });
+};
+
+// ---- js/games3.js ----
+// ============================================================
+// EVEN MORE GAMES — Koi Glide · Ink Clash · Taiko Echo · Word Forge · Constitution Quiz · Tile Merge
+// ============================================================
+Games.catalog.push(
+  { id: "koi", jp: "鯉", title: "Koi Glide", tag: "Arcade", line: "Guide the koi. Gather the petals.", how: "Swipe (or use arrow keys / WASD) to steer. Each petal makes the koi longer and faster. Don't touch the bank or your own tail.", c1: "#e0762c", c2: "#1d1107", init: "koi" },
+  { id: "ink", jp: "色", title: "Ink Clash", tag: "Focus", line: "Name the colour of the ink, not the word.", how: "Thirty seconds. The word says one colour but is painted in another — tap the colour you SEE. A miss costs a point.", c1: "#7b5fc4", c2: "#150f2b", init: "ink" },
+  { id: "taiko", jp: "鼓", title: "Taiko Echo", tag: "Focus", line: "Listen. Watch. Repeat the drums.", how: "The drums light up in a pattern. Repeat it in order — it grows by one every round.", c1: "#d3592b", c2: "#2a0f08", init: "taiko" },
+  { id: "words", jp: "語", title: "Word Forge", tag: "Exam prep", line: "Unscramble the legal and civic words.", how: "Eight words. Tap the letters in order to build the answer. A hint is given for each word; skipping scores nothing.", c1: "#4f8a5e", c2: "#0e2318", init: "words" },
+  { id: "consti", jp: "憲", title: "Constitution Quiz", tag: "Exam prep", line: "Ten quick questions on the Indian Constitution.", how: "Choose the right answer. A short note explains each one. Good revision for CLAT General Knowledge.", c1: "#4262b0", c2: "#0d1630", init: "consti" },
+  { id: "merge", jp: "合", title: "Tile Merge", tag: "Arcade", line: "Slide, merge, reach 2048.", how: "Swipe or use the arrow keys. Equal tiles merge into one. Keep a free corner and plan two moves ahead.", c1: "#b8894a", c2: "#2a1c0b", init: "merge" },
+);
+Games.timers = [];
+{ const _s = Games.stop; Games.stop = function () { _s.call(this); (this.timers || []).forEach(clearTimeout); this.timers = []; }; }
+const keyGuard = (id, fn) => { const h = (e) => { if (!document.getElementById(id)?.isConnected) return document.removeEventListener("keydown", h); fn(e); }; document.addEventListener("keydown", h); };
+const shuf = (a) => [...a].sort(() => Math.random() - 0.5);
+
+// ---- Koi Glide (snake) ----
+Games.koi = function () {
+  const el = document.getElementById("koi"); if (!el) return;
+  const C = 16, R = 20, S = 20; let snake, dir, nxt, food, acc, last;
+  const place = () => { let p; do p = { x: Math.floor(Math.random() * C), y: Math.floor(Math.random() * R) }; while (snake.some((s) => s.x === p.x && s.y === p.y)); return p; };
+  const api = this.canvasGame(el, { title: "koi", help: "Swipe or use arrow keys. Eat the petals; avoid the bank and your tail.",
+    onStart() { snake = [{ x: 8, y: 10 }, { x: 7, y: 10 }, { x: 6, y: 10 }]; dir = nxt = { x: 1, y: 0 }; food = place(); acc = 0; last = 0; },
+    draw(a, t) { const { g, W, H } = a; const dt = Math.min(100, (t - last) || 16); last = t; acc += dt; const ms = Math.max(65, 150 - a.score * 3);
+      while (acc >= ms) { acc -= ms; dir = nxt; const h = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+        if (h.x < 0 || h.y < 0 || h.x >= C || h.y >= R || snake.some((s) => s.x === h.x && s.y === h.y)) return a.over("The koi struck the bank");
+        snake.unshift(h); if (h.x === food.x && h.y === food.y) { a.set(a.score + 1); food = place(); } else snake.pop(); }
+      const grd = g.createLinearGradient(0, 0, 0, H); grd.addColorStop(0, "#0e2230"); grd.addColorStop(1, "#0a141c"); g.fillStyle = grd; g.fillRect(0, 0, W, H);
+      g.strokeStyle = "rgba(255,255,255,.04)"; for (let i = 0; i <= C; i++) { g.beginPath(); g.moveTo(i * S, 0); g.lineTo(i * S, H); g.stroke(); } for (let j = 0; j <= R; j++) { g.beginPath(); g.moveTo(0, j * S); g.lineTo(W, j * S); g.stroke(); }
+      g.font = "18px serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("🌸", food.x * S + S / 2, food.y * S + S / 2 + 1);
+      snake.forEach((s, i) => { const k = 1 - i / (snake.length + 2); g.fillStyle = i % 3 === 1 ? `rgba(255,248,235,${0.5 + k * 0.5})` : `rgba(255,${Math.round(110 + 40 * k)},58,${0.55 + k * 0.45})`;
+        g.beginPath(); g.arc(s.x * S + S / 2, s.y * S + S / 2, S / 2 - 1 - (i / snake.length) * 3, 0, 7); g.fill(); });
+      const h = snake[0]; g.fillStyle = "#fff"; [[-4, -4], [4, -4]].forEach(([dx, dy]) => { g.beginPath(); g.arc(h.x * S + S / 2 + dx * (dir.y ? 1 : 0.4) + (dir.x ? dir.x * 3 : 0), h.y * S + S / 2 + dy * (dir.x ? 1 : 0.4) + (dir.y ? dir.y * 3 : 0), 2.2, 0, 7); g.fill(); }); } });
+  const turn = (x, y) => { if (x === -dir.x && y === -dir.y) return; nxt = { x, y }; };
+  keyGuard("koi", (e) => { const m = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0], w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0] }[e.key]; if (m && api.run) { e.preventDefault(); turn(...m); } });
+  let sx, sy; api.cv.addEventListener("pointerdown", (e) => { sx = e.clientX; sy = e.clientY; });
+  api.cv.addEventListener("pointermove", (e) => { if (sx == null || !api.run) return; const dx = e.clientX - sx, dy = e.clientY - sy; if (Math.hypot(dx, dy) < 18) return; if (Math.abs(dx) > Math.abs(dy)) turn(Math.sign(dx), 0); else turn(0, Math.sign(dy)); sx = e.clientX; sy = e.clientY; });
+  api.cv.addEventListener("pointerup", () => (sx = null));
+};
+
+// ---- Ink Clash (Stroop) ----
+Games.ink = function () {
+  const el = document.getElementById("ink"); if (!el) return;
+  const COLS = [["RED", "#e0452f"], ["BLUE", "#4a90c2"], ["GREEN", "#46aa6e"], ["GOLD", "#d9a53b"]]; let score, left, timer, ink;
+  const show = () => { const w = COLS[Math.floor(Math.random() * 4)]; ink = Math.random() < 0.75 ? COLS[(COLS.indexOf(w) + 1 + Math.floor(Math.random() * 3)) % 4] : w;
+    el.querySelector(".ik-w").textContent = w[0]; el.querySelector(".ik-w").style.color = ink[1]; };
+  const intro = () => { clearInterval(timer); el.innerHTML = `<div class="game-stats"><span>Best <b>${Games.best("ink")}</b></span></div><div class="cv-over static"><b>30 seconds. Tap the colour of the INK, not the word.</b><button class="btn btn-primary" type="button">Start</button></div>`; el.querySelector("button").onclick = start; };
+  const start = () => { score = 0; left = 30;
+    el.innerHTML = `<div class="game-stats"><span>Score <b class="ik-s">0</b></span><span>Time <b class="ik-t">30</b>s</span><span>Best <b>${Games.best("ink")}</b></span></div><div class="ik-w"></div><div class="sp-bar"><u></u></div>
+      <div class="sp-o">${COLS.map((c) => `<button type="button" class="sp-btn ik-b" data-n="${c[0]}">${c[0]}</button>`).join("")}</div>`;
+    show(); el.querySelectorAll(".ik-b").forEach((b) => (b.onclick = () => { if (b.dataset.n === ink[0]) score++; else score = Math.max(0, score - 1); el.querySelector(".ik-s").textContent = score; show(); }));
+    timer = setInterval(() => { left--; el.querySelector(".ik-t") && (el.querySelector(".ik-t").textContent = left); el.querySelector(".sp-bar u") && (el.querySelector(".sp-bar u").style.width = (left / 30) * 100 + "%");
+      if (left <= 0) { clearInterval(timer); if (score > Games.best("ink")) Games.setBest("ink", score); el.innerHTML = `<div class="cv-over static"><b>Time! Score ${score}</b><button class="btn btn-primary" type="button">Again</button></div>`; el.querySelector("button").onclick = start; } }, 1000);
+    (Games.ivs = Games.ivs || []).push(timer); };
+  intro();
+};
+
+// ---- Taiko Echo (Simon) ----
+Games.taiko = function () {
+  const el = document.getElementById("taiko"); if (!el) return;
+  const PADS = ["#d9362b", "#d9a53b", "#2f8f82", "#4262b0"], F = [262, 330, 392, 523]; let seq, pos, lock, ac;
+  const tone = (i) => { try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); const o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = F[i]; o.type = "triangle"; g.gain.setValueAtTime(0.18, ac.currentTime); g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.35); o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime + 0.36); } catch {} };
+  const sleep = (ms) => new Promise((r) => Games.timers.push(setTimeout(r, ms)));
+  const pad = (i) => el.querySelector(`.tk-pad[data-i="${i}"]`);
+  const flash = async (i) => { const p = pad(i); if (!p) return; p.classList.add("lit"); tone(i); await sleep(380); p.classList.remove("lit"); };
+  const play = async () => { lock = true; el.querySelector(".tk-msg").textContent = "Watch…"; await sleep(600); for (const i of seq) { await flash(i); await sleep(170); } lock = false; pos = 0; el.querySelector(".tk-msg").textContent = "Your turn"; };
+  const next = () => { seq.push(Math.floor(Math.random() * 4)); el.querySelector(".tk-r").textContent = seq.length - 1; play(); };
+  const over = () => { const sc = seq.length - 1; if (sc > Games.best("taiko")) Games.setBest("taiko", sc); el.innerHTML = `<div class="cv-over static"><b>You reached round ${sc}</b><button class="btn btn-primary" type="button">Again</button></div>`; el.querySelector("button").onclick = start; };
+  const start = () => { seq = []; pos = 0; lock = true;
+    el.innerHTML = `<div class="game-stats"><span>Round <b class="tk-r">0</b></span><span class="tk-msg">Watch…</span><span>Best <b>${Games.best("taiko")}</b></span></div><div class="tk-grid">${PADS.map((c, i) => `<button type="button" class="tk-pad" data-i="${i}" style="--c:${c}" aria-label="Drum ${i + 1}"></button>`).join("")}</div>`;
+    el.querySelectorAll(".tk-pad").forEach((b) => (b.onclick = async () => { if (lock) return; const i = Number(b.dataset.i); flash(i); if (i !== seq[pos]) return over(); pos++; if (pos === seq.length) { lock = true; await sleep(550); next(); } }));
+    next(); };
+  el.innerHTML = `<div class="game-stats"><span>Best <b>${Games.best("taiko")}</b></span></div><div class="cv-over static"><b>Repeat the drum pattern. It grows every round.</b><button class="btn btn-primary" type="button">Start</button></div>`; el.querySelector("button").onclick = start;
+};
+
+// ---- Word Forge (anagrams) ----
+Games.words = function () {
+  const el = document.getElementById("words"); if (!el) return;
+  const W = [["JUDGE", "Presides over a court"], ["VERDICT", "The decision reached by a jury"], ["STATUTE", "A written law made by a legislature"], ["APPEAL", "Ask a higher court to review a decision"], ["TRIBUNAL", "A body set up to settle particular disputes"], ["ADVOCATE", "A lawyer who pleads in court"],
+    ["PRECEDENT", "An earlier case that guides later ones"], ["CONTRACT", "A legally binding agreement"], ["TESTIMONY", "A witness's statement under oath"], ["PLAINTIFF", "The person who brings a case"], ["DEFENDANT", "The person accused or sued"], ["WARRANT", "A document authorising an arrest or search"],
+    ["EVIDENCE", "Facts presented to prove a case"], ["AMENDMENT", "A change made to the Constitution"], ["PREAMBLE", "The introduction to the Constitution"], ["SOVEREIGN", "Having supreme power"], ["REPUBLIC", "A state headed by an elected president"], ["BALLOT", "A vote cast in secret"], ["PARLIAMENT", "The legislature of India"], ["JUSTICE", "Fairness under the law"]];
+  let list, i, score, built, tiles;
+  const scramble = (w) => { let s; do s = shuf(w.split("")).join(""); while (s === w); return s; };
+  const draw = () => { if (i >= 8) { if (score > Games.best("words")) Games.setBest("words", score); el.innerHTML = `<div class="cv-over static"><b>${score} / 8 solved${score === 8 ? " · flawless 🏆" : ""}</b><button class="btn btn-primary" type="button">Again</button></div>`; return (el.querySelector("button").onclick = start); }
+    const [w, hint] = list[i]; if (!tiles) tiles = scramble(w).split(""); const used = built.map((b) => b.t);
+    el.innerHTML = `<div class="game-stats"><span>Word <b>${i + 1}</b>/8</span><span>Score <b>${score}</b></span><span>Best <b>${Games.best("words")}</b></span></div>
+      <p class="wf-hint">${hint}</p><div class="wf-ans">${w.split("").map((_, k) => `<span class="${built[k] ? "on" : ""}">${built[k] ? built[k].c : ""}</span>`).join("")}</div>
+      <div class="wf-tiles">${tiles.map((c, t) => `<button type="button" class="wf-t" data-t="${t}" ${used.includes(t) ? "disabled" : ""}>${c}</button>`).join("")}</div>
+      <div class="wf-ctl"><button type="button" class="btn btn-ghost" id="wf-undo">Undo</button><button type="button" class="btn btn-ghost" id="wf-shuf">Shuffle</button><button type="button" class="btn btn-ghost" id="wf-skip">Skip</button></div>`;
+    el.querySelectorAll(".wf-t").forEach((b) => (b.onclick = () => { built.push({ t: Number(b.dataset.t), c: tiles[b.dataset.t] }); if (built.length === w.length) { if (built.map((x) => x.c).join("") === w) { score++; el.querySelector(".wf-ans").classList.add("ok"); setTimeout(() => { i++; built = []; tiles = null; draw(); }, 650); } else { el.querySelector(".wf-ans").classList.add("bad"); setTimeout(() => { built = []; draw(); }, 600); } } else draw(); }));
+    el.querySelector("#wf-undo").onclick = () => { built.pop(); draw(); }; el.querySelector("#wf-shuf").onclick = () => { tiles = shuf(tiles); built = []; draw(); }; el.querySelector("#wf-skip").onclick = () => { i++; built = []; tiles = null; draw(); }; };
+  const start = () => { list = shuf(W).slice(0, 8); i = 0; score = 0; built = []; tiles = null; draw(); };
+  el.innerHTML = `<div class="game-stats"><span>Best <b>${Games.best("words")}</b></span></div><div class="cv-over static"><b>Eight scrambled words, one hint each.</b><button class="btn btn-primary" type="button">Start</button></div>`; el.querySelector("button").onclick = start;
+};
+
+// ---- Constitution Quiz ----
+Games.consti = function () {
+  const el = document.getElementById("consti"); if (!el) return;
+  const Q = [["Who chaired the Drafting Committee of the Constitution?", ["B. R. Ambedkar", "Jawaharlal Nehru", "Rajendra Prasad"], "Dr B. R. Ambedkar chaired the Drafting Committee."], ["Which Article abolishes untouchability?", ["Article 17", "Article 15", "Article 21"], "Article 17 abolishes untouchability and forbids its practice."],
+    ["Right to Life and Personal Liberty is in…", ["Article 21", "Article 19", "Article 32"], "Article 21 protects life and personal liberty."], ["Which Article gives the Right to Constitutional Remedies?", ["Article 32", "Article 14", "Article 226"], "Article 32 lets you move the Supreme Court for enforcement of Fundamental Rights."],
+    ["Fundamental Rights are in which Part of the Constitution?", ["Part III", "Part IV", "Part II"], "Part III holds the Fundamental Rights; Part IV the Directive Principles."], ["The Constitution came into force on…", ["26 January 1950", "15 August 1947", "26 November 1949"], "It was adopted on 26 Nov 1949 and came into force on 26 Jan 1950."],
+    ["Which Amendment added the Fundamental Duties?", ["42nd", "44th", "73rd"], "The 42nd Amendment (1976) added Fundamental Duties."], ["Right to Education is under which Article?", ["Article 21A", "Article 45", "Article 19"], "Article 21A, added by the 86th Amendment."], ["Equality before the law is guaranteed by…", ["Article 14", "Article 16", "Article 25"], "Article 14: equality before law and equal protection of the laws."],
+    ["Who appoints the Chief Justice of India?", ["The President", "The Prime Minister", "The Parliament"], "The President appoints the CJI under Article 124."], ["Minimum age to be elected President of India?", ["35 years", "30 years", "25 years"], "A candidate must be at least 35."], ["How many Schedules does the Constitution have now?", ["12", "8", "10"], "There are 12 Schedules."],
+    ["Who is the first law officer of the Government of India?", ["Attorney General", "Solicitor General", "Law Minister"], "The Attorney General of India (Article 76)."], ["Freedom of speech and expression is in…", ["Article 19(1)(a)", "Article 21", "Article 25"], "Article 19(1)(a)."], ["The words 'Socialist' and 'Secular' were added to the Preamble by the…", ["42nd Amendment", "1st Amendment", "44th Amendment"], "Through the 42nd Amendment (1976)."]];
+  let order, i, score;
+  const next = () => { if (i >= 10) { if (score > Games.best("consti")) Games.setBest("consti", score); el.innerHTML = `<div class="cv-over static"><b>${score} / 10 correct${score === 10 ? " · flawless 🏆" : ""}</b><button class="btn btn-primary" type="button">Again</button></div>`; return (el.querySelector("button").onclick = start); }
+    const [q, opts, note] = order[i], o = shuf(opts);
+    el.innerHTML = `<div class="game-stats"><span>Question <b>${i + 1}</b>/10</span><span>Score <b>${score}</b></span><span>Best <b>${Games.best("consti")}</b></span></div><div class="cq-q">${q}</div><div class="mx-o">${o.map((x) => `<button type="button" class="mx-btn" data-ok="${x === opts[0] ? 1 : 0}">${x}</button>`).join("")}</div><p class="cq-note" hidden>${note}</p>`;
+    el.querySelectorAll(".mx-btn").forEach((b) => (b.onclick = () => { el.querySelectorAll(".mx-btn").forEach((x) => { x.disabled = true; if (x.dataset.ok === "1") x.classList.add("ok"); }); if (b.dataset.ok === "1") score++; else b.classList.add("bad"); el.querySelector(".cq-note").hidden = false; i++; setTimeout(next, 1900); })); };
+  const start = () => { order = shuf(Q).slice(0, 10); i = 0; score = 0; next(); };
+  el.innerHTML = `<div class="game-stats"><span>Best <b>${Games.best("consti")}</b></span></div><div class="cv-over static"><b>Ten questions on the Indian Constitution.</b><button class="btn btn-primary" type="button">Start</button></div>`; el.querySelector("button").onclick = start;
+};
+
+// ---- Tile Merge (2048) ----
+Games.merge = function () {
+  const el = document.getElementById("merge"); if (!el) return;
+  let g, score, over;
+  const add = () => { const e = g.map((v, k) => (v ? -1 : k)).filter((k) => k >= 0); if (e.length) g[e[Math.floor(Math.random() * e.length)]] = Math.random() < 0.9 ? 2 : 4; };
+  const slide = (row) => { const a = row.filter(Boolean); for (let k = 0; k < a.length - 1; k++) if (a[k] === a[k + 1]) { a[k] *= 2; score += a[k]; a.splice(k + 1, 1); } while (a.length < 4) a.push(0); return a; };
+  const move = (d) => { if (over) return; const b = [...g];
+    for (let n = 0; n < 4; n++) { const idx = [0, 1, 2, 3].map((k) => (d === "L" ? n * 4 + k : d === "R" ? n * 4 + 3 - k : d === "U" ? k * 4 + n : (3 - k) * 4 + n)); const r = slide(idx.map((k) => g[k])); idx.forEach((k, j) => (g[k] = r[j])); }
+    if (b.join() === g.join()) return; add(); if (score > Games.best("merge")) Games.setBest("merge", score);
+    over = !g.includes(0) && !["L", "R", "U", "D"].some((m) => { const s = score, c = [...g]; const t = []; for (let n = 0; n < 4; n++) { const idx = [0, 1, 2, 3].map((k) => (m === "L" ? n * 4 + k : m === "R" ? n * 4 + 3 - k : m === "U" ? k * 4 + n : (3 - k) * 4 + n)); const r = slide(idx.map((k) => c[k])); r.forEach((v, j) => (t[idx[j]] = v)); score = s; } return t.join() !== g.join(); });
+    draw(); };
+  const draw = () => { el.innerHTML = `<div class="game-stats"><span>Score <b>${score}</b></span><span>Best <b>${Games.best("merge")}</b></span><button class="btn btn-ghost tm-new" type="button">New game</button></div>
+      <div class="tm-board">${g.map((v) => `<div class="tm-cell" data-v="${v}">${v || ""}</div>`).join("")}${over ? `<div class="cv-over"><b>No more moves · ${score}</b><button class="btn btn-primary tm-new" type="button">Play again</button></div>` : ""}</div>`;
+    el.querySelectorAll(".tm-new").forEach((b) => (b.onclick = start)); };
+  const start = () => { g = Array(16).fill(0); score = 0; over = false; add(); add(); draw(); };
+  keyGuard("merge", (e) => { const m = { ArrowLeft: "L", ArrowRight: "R", ArrowUp: "U", ArrowDown: "D" }[e.key]; if (m) { e.preventDefault(); move(m); } });
+  let sx, sy; el.addEventListener("pointerdown", (e) => { if (e.target.closest(".tm-board")) { sx = e.clientX; sy = e.clientY; } });
+  el.addEventListener("pointerup", (e) => { if (sx == null) return; const dx = e.clientX - sx, dy = e.clientY - sy; sx = null; if (Math.hypot(dx, dy) < 24) return; move(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "R" : "L") : dy > 0 ? "D" : "U"); });
+  el.style.touchAction = "none"; start();
 };
 
 // ---- js/goals.js ----
@@ -3499,8 +3966,8 @@ const Study = {
     ]);
 
     const combined = [
-      ...sessions.slice(0, 8).map((s) => ({ type: "Session", label: s.topic_text || "Study session", sub: fmtDuration(s.duration_sec), date: s.start_time })),
-      ...pomos.slice(0, 8).map((p) => ({ type: "Pomodoro", label: p.topic_text || "Pomodoro", sub: `${p.duration_min} min`, date: p.completed_at })),
+      ...sessions.slice(0, 8).map((s) => ({ type: "Session", label: s.topic_text || "Study session", sub: fmtDuration(s.duration_sec), date: s.start_time, id: s.id, kind: "session" })),
+      ...pomos.slice(0, 8).map((p) => ({ type: "Pomodoro", label: p.topic_text || "Pomodoro", sub: `${p.duration_min} min`, date: p.completed_at, id: p.id, kind: "pomodoro" })),
     ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 10);
 
     if (!combined.length) {
@@ -3508,7 +3975,7 @@ const Study = {
       return;
     }
     el.innerHTML = combined
-      .map((r) => `<div class="mini-row"><span>${r.type === "Pomodoro" ? "⏱" : "📖"} ${escapeHtml(r.label)}</span><span>${r.sub}</span><span class="muted">${fmtDate(r.date)}</span></div>`)
+      .map((r) => `<div class="mini-row"><span>${r.type === "Pomodoro" ? "⏱" : "📖"} ${escapeHtml(r.label)}</span><span>${r.sub}</span><span class="muted">${fmtDate(r.date)}</span><button class=\"rec-del\" type=\"button\" data-del-kind=\"${r.kind}\" data-del-id=\"${r.id}\" title=\"Delete (asks for your password)\" aria-label=\"Delete this record\">🗑</button></div>`)
       .join("");
   },
 };
@@ -3771,7 +4238,9 @@ const TaskImport = {
         <span>or drag &amp; drop it here</span>
         <small>PDF · XLSX · XLS · CSV · TXT — up to 10 MB</small>
       </label>
-      <p class="muted" style="font-size:12px;margin:10px 0 0">Tip for Excel: a header row like <i>Task · Due date · Priority</i> is picked up automatically.</p>
+      <details class="imp-sample"><summary>See a sample file (what the format looks like)</summary>
+        <img src="assets/sample-tasks.png" alt="Sample task file: an Excel sheet with Task, Due date, Priority and Category columns, and a text list with one task per line" loading="lazy" />
+        <p class="muted" style="font-size:12px;margin:8px 0 0">Tip for Excel: a header row like <i>Task · Due date · Priority</i> is picked up automatically. <a href="assets/sample-tasks.csv" download>Download the sample CSV</a> and replace the rows with yours.</p></details>
       <div id="imp-status" class="imp-status" hidden></div>
       <div class="modal-actions"><button type="button" class="btn btn-ghost" id="imp-cancel">Cancel</button></div>
     `);
@@ -4722,6 +5191,7 @@ const Fitness = {
 
     const user = await DB.currentUser();
     this.measurements = await DB.list("body_measurements", { filters: { user_id: user.id }, order: "measured_at", ascending: true });
+    this.gender = await BodyGender.get(user);
     this.renderBodyMap();
     this.renderScale();
     this.renderWizard();
@@ -4763,153 +5233,36 @@ const Fitness = {
     BODY_PARTS.forEach((p) => (v[p.key] = this.wiz?.vals?.[p.key] ?? this.latestOf(p.key).now?.[p.key] ?? null));
     const ask = this.wiz ? this.wiz.steps[this.wiz.i] : null;
 
-    const mir = (d) => d.replace(/(-?\d+(?:\.\d+)?)[ ,](-?\d+(?:\.\d+)?)/g, (m, x, y) => `${-x} ${y}`);
-    const both = (d) => `${d} ${mir(d)}`;            // one path, both halves (torso, head…)
-    const limb = (d, cls = "") => `<path class="${cls}" d="${d}"/><path class="${cls}" d="${mir(d)}"/>`; // separate halves, own shading
-    const lines = (arr, cls = "bd") => arr.map((d) => `<path class="${cls}" d="${d}"/><path class="${cls}" d="${mir(d)}"/>`).join("");
-
-    // ----- FRONT / BACK shared silhouette (right half) -----
-    const S = {
-      head: "M0 8 C12 8 19 17 19 30 C19 42 15 52 9 58 C6 61 3 62 0 62",
-      neck: "M0 52 L11 52 C12 60 13 66 16 74 L0 76",
-      torso: "M0 68 L13 70 C30 74 52 82 66 93 C62 106 52 116 48 128 C46 146 44 160 38 180 C32 194 30 204 32 218 C35 228 38 238 36 250 L0 254",
-      arm: "M60 92 C72 88 83 97 84 111 C86 126 85 138 82 150 C80 162 77 170 76 180 C77 192 77 206 74 222 C72 234 69 246 67 256 L57 256 C58 244 60 232 60 220 C60 206 60 192 60 180 C60 164 58 150 55 138 C52 126 51 116 50 106 C52 98 56 93 60 92 Z",
-      hand: "M57 256 L68 256 C72 268 72 280 68 290 C64 296 59 293 58 284 C56 274 56 264 57 256 Z",
-      leg: "M2 246 L39 238 C46 252 51 272 50 290 C49 306 44 320 40 334 C37 342 38 350 38 358 C40 368 37 384 32 396 C30 400 29 404 29 408 L14 408 C14 398 12 386 11 372 C10 360 9 350 10 340 C11 326 10 306 8 288 C6 272 4 258 2 246 Z",
-      foot: "M14 408 L29 408 C33 414 33 420 26 423 L12 423 C9 419 11 412 14 408 Z",
-      brief: "M0 217 L40 215 C43 226 41 237 35 246 C25 256 14 262 3 268 L0 268 Z",
-      briefB: "M0 217 L40 215 C44 228 44 242 40 254 C28 262 14 264 0 262 Z",
-    };
-    // muscle-group bands (curved so they wrap the form); clipped to the body
-    const B = {
-      shoulders: "M50 86 Q70 82 90 90 L90 128 Q70 124 50 128 Z",
-      arms: "M52 132 Q70 136 90 132 L90 184 Q70 188 52 184 Z",
-      chest: "M-54 90 Q0 102 54 90 L54 136 Q0 148 -54 136 Z",
-      waist: "M-48 150 Q0 160 48 150 L48 218 Q0 228 -48 218 Z",
-      thighs: "M0 252 Q28 259 56 252 L56 322 Q28 329 0 322 Z",
-    };
-    // ----- SIDE silhouette (faces left) -----
-    const SIDE = {
-      body: "M-2 8 C10 6 19 15 19 28 C19 40 16 50 12 56 L13 64 C15 72 22 78 30 86 C36 98 36 112 34 126 C32 146 28 164 27 180 C26 192 28 200 34 212 C41 224 42 242 37 256 C35 270 33 290 31 308 C30 322 29 332 29 342 C31 352 34 362 33 376 C32 388 27 398 24 404 L24 412 C24 418 18 421 10 421 L-28 421 C-36 421 -38 414 -32 411 C-24 408 -18 406 -15 402 C-14 394 -15 384 -15 372 C-16 358 -19 348 -21 340 C-23 330 -24 322 -25 312 C-28 296 -30 280 -29 268 C-28 256 -29 246 -30 236 C-32 226 -32 214 -30 204 C-30 192 -29 182 -29 172 C-31 158 -36 148 -41 136 C-46 124 -46 112 -42 104 C-38 96 -28 92 -20 88 L-14 84 L-12 68 L-11 60 C-14 58 -16 56 -15 53 L-16 47 L-14 45 L-17 40 C-21 38 -21 35 -18 33 L-16 29 C-17 24 -15 18 -10 12 C-8 9 -5 8 -2 8 Z",
-      arm: "M-10 92 C2 88 14 94 15 108 C16 124 14 142 12 158 C11 170 11 184 11 196 C11 212 12 228 13 244 L-2 252 C-3 234 -6 216 -9 200 C-11 188 -12 176 -13 166 C-15 150 -17 134 -15 118 C-15 106 -13 97 -10 92 Z",
-      hand: "M-2 252 L13 246 C16 260 16 274 10 284 C4 290 -3 284 -4 272 Z",
-      brief: "M-31 216 C-30 232 -29 246 -26 262 C-10 266 14 266 32 260 C40 248 44 232 40 214 C12 220 -12 220 -31 216 Z",
-    };
-    const SB = {
-      shoulders: "M-16 86 Q0 82 18 90 L18 120 Q0 116 -16 120 Z",
-      arms: "M-18 122 Q0 126 18 122 L18 176 Q0 180 -18 176 Z",
-      chest: "M-54 94 Q-34 102 -14 96 L-14 144 Q-34 152 -54 144 Z",
-      waist: "M-40 154 Q0 164 46 154 L46 214 Q0 224 -40 214 Z",
-      thighs: "M-40 252 Q0 259 48 252 L48 320 Q0 327 -40 320 Z",
-    };
-
-    const defs = `<defs>
-      <linearGradient id="clay" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#85868d"/><stop offset=".2" stop-color="#c3c4c9"/><stop offset=".5" stop-color="#eceef0"/><stop offset=".8" stop-color="#c0c1c7"/><stop offset="1" stop-color="#7f8087"/></linearGradient>
-      <linearGradient id="clayS" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#d9dadd"/><stop offset=".35" stop-color="#e8e9ec"/><stop offset=".75" stop-color="#b6b7bd"/><stop offset="1" stop-color="#85868d"/></linearGradient>
-      <linearGradient id="vshade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset=".45" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".22"/></linearGradient>
-      <linearGradient id="briefG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b5b6bc"/><stop offset="1" stop-color="#8b8c93"/></linearGradient>
-      <radialGradient id="floorG"><stop offset="0" stop-color="#000" stop-opacity=".42"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
-    </defs>`;
-
-    // clip-paths for a view: everything / torso+legs / arms
-    const clips = (id, all, bodyPaths, armPaths) => `<clipPath id="${id}-all">${all}</clipPath><clipPath id="${id}-body">${bodyPaths}</clipPath><clipPath id="${id}-arms">${armPaths}</clipPath>`;
-    const cp = (ds) => ds.map((d) => `<path d="${d}"/>`).join("");
-    const bandZone = (key, d, mirrorIt) => `<g class="bz${v[key] != null ? " has" : ""}${ask === key ? " ask" : ""}" data-part="${key}" tabindex="0" role="button" aria-label="${key}${v[key] != null ? " " + v[key] + " centimetres" : ", not measured"}"><path d="${d}"/>${mirrorIt ? `<path d="${mir(d)}"/>` : ""}</g>`;
-    const zoneSet = (set, keys, mirrorKeys, clipId) => keys.map((k) => bandZone(k, set[k], mirrorKeys.includes(k))).join("");
-
-    // ---------- FRONT ----------
-    const frontAll = [both(S.head), both(S.neck), both(S.torso), mir(S.arm), S.arm, mir(S.hand), S.hand, mir(S.leg), S.leg, mir(S.foot), S.foot].join(" ");
-    const front = `
-      <g transform="translate(110 0)">
-        <ellipse cx="0" cy="424" rx="64" ry="7" fill="url(#floorG)"/>
-        ${clips("fr", `<path d="${frontAll}"/>`, cp([both(S.torso), S.leg, mir(S.leg), both(S.head), both(S.neck)]), cp([S.arm, mir(S.arm), S.hand, mir(S.hand)]))}
-        <g class="bfig">
-          ${limb(S.leg, "bs")}${limb(S.foot, "bs")}
-          <path class="bs" d="${both(S.neck)}"/><path class="bs" d="${both(S.head)}"/>
-          <ellipse class="bs" cx="-19.5" cy="34" rx="2.6" ry="5.4"/><ellipse class="bs" cx="19.5" cy="34" rx="2.6" ry="5.4"/>
-          <path class="bs" d="${both(S.torso)}"/>
-          <path class="brf" d="${both(S.brief)}"/>
-          ${limb(S.hand, "bs")}
-          <g class="bd-wrap">
-            ${lines(["M8 60 C10 68 13 74 16 78", "M6 80 C20 78 36 82 58 92", "M3 120 C18 134 38 132 49 118", "M49 120 C52 112 54 104 55 98", "M2 148 C8 150 14 150 18 148", "M2 166 C8 168 15 168 19 166", "M2 184 C8 186 14 186 17 184", "M19 138 C22 160 21 188 17 212", "M46 134 L38 138", "M46 144 L39 148", "M45 154 L39 157", "M31 206 C26 212 17 216 9 217", "M26 262 C34 282 34 304 28 326", "M12 264 C17 286 19 308 15 330", "M26 352 C31 366 30 382 25 396", "M18 354 C17 372 18 388 19 398", "M56 98 C62 110 62 122 57 132", "M16 332 C22 328 30 329 34 335"])}
-            <path class="bd" d="M0 70 L0 222"/><ellipse class="bd-fill" cx="0" cy="176" rx="1.6" ry="2.6"/>
-            <path class="bd" d="M4 27 C8 25 13 25 14 28"/><path class="bd" d="M-4 27 C-8 25 -13 25 -14 28"/><path class="bd" d="M6 32 C8 31 11 31 12 32"/><path class="bd" d="M-6 32 C-8 31 -11 31 -12 32"/><path class="bd" d="M0 31 L0 41 M-4 43 C-2 45 2 45 4 43 M-6 51 C-2 53 2 53 6 51"/>
-            <ellipse class="bd bd-soft" cx="24" cy="341" rx="6.5" ry="5.5"/><ellipse class="bd bd-soft" cx="-24" cy="341" rx="6.5" ry="5.5"/>
-            <path class="bh" d="M-14 100 C-6 106 6 106 14 100"/>${lines(["M26 98 C34 104 40 112 44 122", "M70 104 C74 116 74 128 71 140", "M27 284 C30 298 30 308 27 320"], "bh")}
-          </g>
-          <g clip-path="url(#fr-body)">${zoneSet(B, ["chest", "waist"], [], "fr-body")}${bandZone("thighs", B.thighs, true)}</g>
-          <path class="bs" d="${mir(S.arm)}"/><path class="bs" d="${S.arm}"/>
-          <g class="bd-wrap">${lines(["M68 120 C71 134 71 148 68 160", "M62 178 C67 181 72 181 76 178", "M68 192 C69 210 67 226 64 244"])}</g>
-          <g clip-path="url(#fr-arms)">${bandZone("shoulders", B.shoulders, true)}${bandZone("arms", B.arms, true)}</g>
-          <rect x="-90" y="0" width="180" height="430" fill="url(#vshade)" clip-path="url(#fr-all)" pointer-events="none"/>
-        </g>
-        <text class="bcap" x="0" y="440">FRONT</text>
-      </g>`;
-
-    // ---------- BACK ----------
-    const backAll = frontAll;
-    const back = `
-      <g transform="translate(490 0)">
-        <ellipse cx="0" cy="424" rx="64" ry="7" fill="url(#floorG)"/>
-        ${clips("bk", `<path d="${backAll}"/>`, cp([both(S.torso), S.leg, mir(S.leg), both(S.head), both(S.neck)]), cp([S.arm, mir(S.arm), S.hand, mir(S.hand)]))}
-        <g class="bfig">
-          ${limb(S.leg, "bs")}${limb(S.foot, "bs")}
-          <path class="bs" d="${both(S.neck)}"/><path class="bs" d="${both(S.head)}"/>
-          <ellipse class="bs" cx="-19.5" cy="34" rx="2.6" ry="5.4"/><ellipse class="bs" cx="19.5" cy="34" rx="2.6" ry="5.4"/>
-          <path class="bs" d="${both(S.torso)}"/>
-          <path class="brf" d="${both(S.briefB)}"/>
-          ${limb(S.hand, "bs")}
-          <g class="bd-wrap">
-            <path class="bd" d="M0 70 L0 222"/>
-            ${lines(["M10 76 C24 96 36 112 44 128", "M3 82 C16 100 28 116 36 128", "M12 100 C24 98 36 106 36 122 C32 130 20 130 14 122", "M46 134 C42 156 32 178 20 198", "M49 120 C52 112 54 104 55 98", "M26 262 C34 282 34 304 28 326", "M12 264 C17 286 19 308 15 330", "M14 336 C22 340 32 340 36 336", "M18 348 C13 362 15 380 20 394", "M32 348 C38 362 36 380 31 394", "M21 396 L22 406", "M68 192 C69 210 67 226 64 244"])}
-            <path class="bd" d="M-14 42 C-8 50 8 50 14 42"/>
-            ${lines(["M20 240 C28 232 38 232 44 240", "M26 268 C28 286 28 304 25 322"], "bh")}
-          </g>
-          <g clip-path="url(#bk-body)">${zoneSet(B, ["chest", "waist"], [], "bk-body")}${bandZone("thighs", B.thighs, true)}</g>
-          <path class="bs" d="${mir(S.arm)}"/><path class="bs" d="${S.arm}"/>
-          <g class="bd-wrap">${lines(["M68 124 C72 138 72 152 68 166", "M68 192 C69 210 67 226 64 244"])}</g>
-          <g clip-path="url(#bk-arms)">${bandZone("shoulders", B.shoulders, true)}${bandZone("arms", B.arms, true)}</g>
-          <rect x="-90" y="0" width="180" height="430" fill="url(#vshade)" clip-path="url(#bk-all)" pointer-events="none"/>
-        </g>
-        <text class="bcap" x="0" y="440">BACK</text>
-      </g>`;
-
-    // ---------- SIDE ----------
-    const side = `
-      <g transform="translate(300 0)">
-        <ellipse cx="0" cy="424" rx="60" ry="7" fill="url(#floorG)"/>
-        ${clips("sd", `<path d="${SIDE.body} ${SIDE.arm} ${SIDE.hand}"/>`, cp([SIDE.body]), cp([SIDE.arm, SIDE.hand]))}
-        <g class="bfig">
-          <path class="bs bsS" d="${SIDE.body}"/>
-          <path class="brf" d="${SIDE.brief}"/>
-          <g class="bd-wrap">
-            <ellipse class="bd-fill" cx="-8" cy="27" rx="1.5" ry="1.2"/><ellipse class="bd bd-soft" cx="5" cy="34" rx="3" ry="5.5"/>
-            ${["M-10 54 C-2 57 6 55 11 50", "M-8 62 C-2 70 6 76 12 82", "M-40 130 C-30 141 -20 139 -12 131", "M-28 152 C-30 172 -29 192 -27 206", "M32 214 C40 224 40 240 34 254", "M33 268 C33 290 31 310 29 326", "M-22 266 C-26 288 -26 310 -23 330", "M31 352 C34 364 32 378 27 394", "M-16 352 C-17 370 -16 384 -15 398", "M-16 100 C-28 110 -34 122 -34 132"].map((d) => `<path class="bd" d="${d}"/>`).join("")}
-            <ellipse class="bd bd-soft" cx="-20" cy="338" rx="5" ry="6.5"/>
-          </g>
-          <g clip-path="url(#sd-body)">${zoneSet(SB, ["chest", "waist", "thighs"], [], "sd-body")}</g>
-          <path class="bs bsS" d="${SIDE.arm}"/><path class="bs bsS" d="${SIDE.hand}"/>
-          <g class="bd-wrap">${["M8 112 C10 130 10 146 9 160", "M-9 120 C-12 134 -11 148 -10 160", "M-10 172 C-2 175 6 175 11 172", "M-4 192 C-4 212 -3 230 -2 246"].map((d) => `<path class="bd" d="${d}"/>`).join("")}</g>
-          <g clip-path="url(#sd-arms)">${zoneSet(SB, ["shoulders", "arms"], [], "sd-arms")}</g>
-          <rect x="-90" y="0" width="180" height="430" fill="url(#vshade)" clip-path="url(#sd-all)" pointer-events="none"/>
-        </g>
-        <text class="bcap" x="0" y="440">SIDE</text>
-      </g>`;
-
     const chips = BODY_PARTS.map((p) => {
       const has = v[p.key] != null;
       return `<button type="button" class="bchip-btn${has ? " has" : ""}${ask === p.key ? " ask" : ""}" data-part="${p.key}"><span>${p.label}</span><b>${has ? v[p.key] + " cm" : "+ add"}</b></button>`;
     }).join("");
 
-    el.innerHTML = `
-      <svg viewBox="0 0 600 446" class="body-svg body-3" role="img" aria-label="Body measurements map — front, side and back views">${defs}${front}${side}${back}</svg>
-      <div class="bchips" id="body-chips">${chips}</div>`;
-
-    el.querySelectorAll("[data-part]").forEach((n) => {
+    const wire = (root) => root.querySelectorAll("[data-part]").forEach((n) => {
       const open = () => { if (!this.wiz) this.startWizard([n.dataset.part]); else this.gotoWizardPart(n.dataset.part); };
       n.addEventListener("click", open);
       n.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
     });
+    // gender first: the mesh (and where the rings sit) depends on it
+    if (!this.gender) {
+      this._b3d?.dispose(); this._b3d = null;
+      el.innerHTML = `<div class="gender-pick"><h4>First, pick the body type</h4><p class="muted small">Michi shows a matching 3D body, so your measurements land in the right place. You can change it any time.</p>
+        <div class="gender-btns"><button type="button" class="gender-btn" data-g="male"><span>♂</span>Male</button><button type="button" class="gender-btn" data-g="female"><span>♀</span>Female</button></div></div>`;
+      el.querySelectorAll("[data-g]").forEach((b) => (b.onclick = async () => { this.gender = b.dataset.g; await BodyGender.set(await DB.currentUser(), this.gender); this.renderBodyMap(); }));
+      return;
+    }
+    const host3d = el.querySelector("#body3d");
+    if (host3d && this._b3d && host3d.isConnected) {                 // already mounted: just refresh rings + chips
+      el.querySelector("#body-chips").innerHTML = chips; wire(el.querySelector("#body-chips")); this._b3d.update(v, ask); return;
+    }
+    el.innerHTML = `<div id="body3d" class="body3d"></div>
+      <p class="muted small body3d-help">Drag to turn the body · tap a ring or a body part to measure it · <button type="button" class="link-btn" id="gender-change">${this.gender === "male" ? "Male" : "Female"} (change)</button></p>
+      <div class="bchips" id="body-chips">${chips}</div>
+      <p class="idc-credit">3D bodies (simplified): <a href="https://sketchfab.com/3d-models/female-body-base-mesh-4bd94f4c0406464c91fdf55db6ca8d18" target="_blank" rel="noopener">Female body base mesh</a> by gus_thewise · <a href="https://sketchfab.com/3d-models/male-body-base-mesh-highpoly-9311f4f8fa1a4fe4bb0027ff7e8fd795" target="_blank" rel="noopener">Male body base mesh</a> by Mandrake · <a href="http://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a></p>`;
+    wire(el);
+    el.querySelector("#gender-change").onclick = async () => { this.gender = this.gender === "male" ? "female" : "male"; await BodyGender.set(await DB.currentUser(), this.gender); this._b3d?.setGender(this.gender); el.querySelector("#gender-change").textContent = `${this.gender === "male" ? "Male" : "Female"} (change)`; };
+    const mountIt = () => { this._b3d?.dispose(); this._b3d = window.Body3D.mount(el.querySelector("#body3d"), { gender: this.gender, values: v, ask, onPick: (k) => { if (!this.wiz) this.startWizard([k]); else this.gotoWizardPart(k); } }); };
+    if (window.Body3D) mountIt(); else document.addEventListener("body3d-ready", mountIt, { once: true });
   },
 
   // ---- weighing scale: the needle is a real spring, the number follows it ----
@@ -5127,6 +5480,16 @@ const WORKOUT_TYPES = [
   ["Cardio", ["Running", "Walking", "Cycling", "Swimming", "HIIT", "Jump rope", "Cardio (general)"]],
   ["Other", ["Calisthenics", "Yoga", "Mobility / Stretching", "Sports", "Martial arts", "Other"]],
 ];
+
+const BodyGender = {
+  key: (uid) => `gender:${uid}`,
+  async get(user) {
+    let g = null; try { g = localStorage.getItem(this.key(user.id)); } catch {}
+    if (!g) { try { const { data } = await DB.client.from("profiles").select("gender").eq("id", user.id).maybeSingle(); g = data?.gender || null; if (g) localStorage.setItem(this.key(user.id), g); } catch {} }
+    return g === "male" || g === "female" ? g : null;
+  },
+  async set(user, g) { try { localStorage.setItem(this.key(user.id), g); } catch {} try { await DB.client.from("profiles").update({ gender: g }).eq("id", user.id); } catch {} },
+};
 
 const BODY_PARTS = [
   { key: "shoulders", label: "Shoulders", unit: "cm", ask: "Measure your shoulders", hint: "Stand tall and relaxed. Wrap the tape around the widest point of your shoulders, over the deltoids." },
@@ -5409,7 +5772,7 @@ const Calendar = {
     const parts = [
       section("Tasks", tasks.data || [], (t) => `<div class="mini-row"><span>${t.status === "completed" ? "✅" : "⬜"} ${escapeHtml(t.title)}</span><span class="muted">${escapeHtml(t.category || "")}</span></div>`),
       section("Tests", tests.data || [], (t) => `<div class="mini-row"><span>${escapeHtml(t.name)}</span><span>${t.total_marks ? pct(t.marks_obtained, t.total_marks) + "%" : "—"}</span></div>`),
-      section("Study Sessions", sessions.data || [], (s) => `<div class="mini-row"><span>${escapeHtml(s.topic_text || "Study session")}</span><span>${fmtDuration(s.duration_sec)}</span></div>`),
+      section("Study Sessions", sessions.data || [], (s) => `<div class="mini-row"><span>${escapeHtml(s.topic_text || "Study session")}</span><span>${fmtDuration(s.duration_sec)}</span><button class=\"rec-del\" type=\"button\" data-del-kind=\"session\" data-del-id=\"${s.id}\" title=\"Delete (asks for your password)\" aria-label=\"Delete this session\">🗑</button></div>`),
       section("Pomodoros", pomos.data || [], (p) => `<div class="mini-row"><span>${escapeHtml(p.topic_text || "Pomodoro")}</span><span>${p.duration_min} min</span></div>`),
       section("Workouts", workouts.data || [], (w) => `<div class="mini-row"><span>${escapeHtml(w.workout_type || "Workout")}</span></div>`),
       section("Milestone Deadlines", milestones.data || [], (g) => `<div class="mini-row"><span>${escapeHtml(g.title)}</span><span>${g.progress}%</span></div>`),
@@ -5635,7 +5998,7 @@ const DASH_WIDGETS = {
   activity: { title: "Recent Activity", el: "recent-activity" },
   quote: { title: "Daily Push", el: "w-quote" },
 };
-const DASH_ORDER = Object.keys(DASH_WIDGETS);
+const DASH_ORDER = ["quote", ...Object.keys(DASH_WIDGETS).filter((k) => k !== "quote")];
 const PUSH_LINES = [
   "Small steps, every day. That's the whole secret.", "Future you is watching. Make them proud.", "Done is better than perfect. Start the timer.",
   "One focused hour beats five distracted ones.", "You don't need motivation — you need the next tiny step.", "Consistency is quiet, and it wins.",
@@ -5684,8 +6047,10 @@ const Dashboard = {
   layout(uid) {
     let l = {};
     try { l = JSON.parse(localStorage.getItem(`dash:layout:${uid}`)) || {}; } catch {}
-    const order = (l.order || []).filter((id) => DASH_WIDGETS[id]);
+    let order = (l.order || []).filter((id) => DASH_WIDGETS[id]);
     DASH_ORDER.forEach((id) => { if (!order.includes(id)) order.push(id); });
+    let moved = false; try { moved = localStorage.getItem(`dash:pushtop:${uid}`) === "1"; } catch {}
+    if (!moved) { order = ["quote", ...order.filter((id) => id !== "quote")]; try { localStorage.setItem(`dash:pushtop:${uid}`, "1"); l.order = order; localStorage.setItem(`dash:layout:${uid}`, JSON.stringify({ ...l, order })); } catch {} }
     return { order, hidden: (l.hidden || []).filter((id) => DASH_WIDGETS[id]), quick: (l.quick || QUICK_DEFAULT).filter((id) => QUICK[id]) };
   },
   saveLayout(uid, l) { try { localStorage.setItem(`dash:layout:${uid}`, JSON.stringify(l)); } catch {} },
@@ -5846,11 +6211,20 @@ const Dashboard = {
       <p class="muted small" style="text-align:center;margin-top:10px">${n} of 7 days active</p>`;
   },
 
+  // Daily Push stays covered until you move over it (tap on phones). Once uncovered it stays visible for the rest of the day;
+  // tomorrow it is covered again with a new line.
   renderQuote() {
     const el = document.getElementById("w-quote");
     if (!el) return;
     const day = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0)) / 864e5);
-    el.innerHTML = `<p class="push-line">“${PUSH_LINES[day % PUSH_LINES.length]}”</p>`;
+    const key = `push:seen:${DB._user?.id || "x"}`, today = todayStr();
+    let seen = false; try { seen = localStorage.getItem(key) === today; } catch {}
+    el.innerHTML = `<div class="push-box${seen ? " revealed" : ""}" tabindex="0" role="button" aria-label="Today's push — move over it to read">
+      <p class="push-line">“${PUSH_LINES[day % PUSH_LINES.length]}”</p>
+      <div class="push-cover"><span class="push-kanji">今日</span><b>Today's push</b><small>Move your cursor here to uncover it</small></div></div>`;
+    const box = el.querySelector(".push-box");
+    const reveal = () => { if (box.classList.contains("revealed")) return; box.classList.add("revealed"); try { localStorage.setItem(key, today); } catch {} };
+    box.addEventListener("pointerenter", reveal); box.addEventListener("pointerdown", reveal); box.addEventListener("focus", reveal);
   },
 
   async renderWeeklyStudy(user) {
@@ -5968,6 +6342,7 @@ async function go(page) {
   else if (page === "calendar") await Calendar.render();
   else if (page === "history") await History.render();
   else if (page === "analysis") await Analysis.render();
+  else if (page === "friends") await Friends.render();
   else if (page === "games") Games.render();
   else if (page === "settings") await Profile.render();
   else if (page === "admin") await Admin.render();
@@ -5977,7 +6352,7 @@ function initNav() {
   document.querySelectorAll(".nav-item[data-page]").forEach((item) => {
     item.addEventListener("click", () => go(item.dataset.page));
   });
-  document.getElementById("sidebar-profile-btn")?.addEventListener("click", () => go("settings"));
+  document.getElementById("sidebar-profile-btn")?.addEventListener("click", () => Profile.openCard());
   document.getElementById("logout-btn")?.addEventListener("click", async () => {
     await Auth.signOut();
   });
@@ -5988,7 +6363,7 @@ function openMobileMoreMenu() {
   const pages = [
     ["goals", "Goals"], ["tests", "Tests"], ["fitness", "Fitness"],
     ["milestones", "Milestones"], ["skills", "Skills"], ["calendar", "Calendar"],
-    ["history", "History"], ["games", "Games"], ["settings", "Settings"],
+    ["history", "History"], ["friends", "Friends"], ["games", "Games"], ["settings", "Settings"],
   ];
   const adminRow = Admin.isAdmin ? `<button class="more-menu-item" data-page="admin">Admin</button>` : "";
   openModal(`
@@ -6106,7 +6481,7 @@ function initThemeToggle() {
   const saved = localStorage.getItem("theme") || (systemDark ? "dark" : "light");
   applyTheme(saved);
   document.getElementById("theme-toggle")?.addEventListener("click", () => {
-    const current = localStorage.getItem("theme") || "light";
+    const current = document.documentElement.getAttribute("data-theme") || "light";   // the page itself is the source of truth
     const next = current === "dark" ? "light" : "dark";
     localStorage.setItem("theme", next);
     applyTheme(next, true);

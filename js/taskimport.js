@@ -47,7 +47,9 @@ const TaskImport = {
         <span>or drag &amp; drop it here</span>
         <small>PDF · XLSX · XLS · CSV · TXT — up to 10 MB</small>
       </label>
-      <p class="muted" style="font-size:12px;margin:10px 0 0">Tip for Excel: a header row like <i>Task · Due date · Priority</i> is picked up automatically.</p>
+      <details class="imp-sample"><summary>See a sample file (what the format looks like)</summary>
+        <img src="assets/sample-tasks.png" alt="Sample task file: an Excel sheet with Task, Due date, Priority and Category columns, and a text list with one task per line" loading="lazy" />
+        <p class="muted" style="font-size:12px;margin:8px 0 0">Tip for Excel: a header row like <i>Task · Due date · Priority</i> is picked up automatically. <a href="assets/sample-tasks.csv" download>Download the sample CSV</a> and replace the rows with yours.</p></details>
       <div id="imp-status" class="imp-status" hidden></div>
       <div class="modal-actions"><button type="button" class="btn btn-ghost" id="imp-cancel">Cancel</button></div>
     `);

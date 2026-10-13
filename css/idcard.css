@@ -5,48 +5,54 @@
 .idc-tilt{position:absolute;inset:0;transform-style:preserve-3d;transform:rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));transition:transform .28s ease-out}
 .idc-flip{position:absolute;inset:0;transform-style:preserve-3d;transition:transform .85s cubic-bezier(.2,.8,.2,1);border-radius:4.3cqw}
 .idc-flip.is-flipped{transform:rotateY(180deg)}
-.idc-face{position:absolute;inset:0;border-radius:4.3cqw;overflow:hidden;backface-visibility:hidden;-webkit-backface-visibility:hidden;color:#f3ece2;font-family:"Zen Kaku Gothic New","Inter",system-ui,sans-serif;
-  background:radial-gradient(120% 90% at 88% -12%,rgba(214,178,110,.24),transparent 55%),radial-gradient(90% 80% at -5% 112%,rgba(217,54,43,.30),transparent 60%),linear-gradient(135deg,#1a1315 0%,#251214 50%,#35171b 100%);
-  box-shadow:inset 0 0 0 .3cqw rgba(214,178,110,.6),inset 0 0 0 1.1cqw rgba(0,0,0,.25),0 2.4cqw 5cqw rgba(0,0,0,.5)}
+.idc-face{position:absolute;inset:0;border-radius:3.6cqw;overflow:hidden;backface-visibility:hidden;-webkit-backface-visibility:hidden;color:#1c1412;font-family:"Zen Kaku Gothic New","Inter",system-ui,sans-serif;
+  background:linear-gradient(160deg,#f8f1e4 0%,#f1e6d2 100%);box-shadow:0 0 0 .25cqw rgba(60,35,25,.35),0 2.2cqw 4.5cqw rgba(0,0,0,.42)}
 .idc-back{transform:rotateY(180deg)}
-.idc-pattern{position:absolute;inset:0;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='20' viewBox='0 0 40 20'%3E%3Cg fill='none' stroke='%23d6b26e' stroke-width='.9'%3E%3Ccircle cx='20' cy='20' r='18'/%3E%3Ccircle cx='20' cy='20' r='13'/%3E%3Ccircle cx='20' cy='20' r='8'/%3E%3Ccircle cx='0' cy='10' r='18'/%3E%3Ccircle cx='0' cy='10' r='13'/%3E%3Ccircle cx='0' cy='10' r='8'/%3E%3Ccircle cx='40' cy='10' r='18'/%3E%3Ccircle cx='40' cy='10' r='13'/%3E%3Ccircle cx='40' cy='10' r='8'/%3E%3Ccircle cx='0' cy='30' r='18'/%3E%3Ccircle cx='0' cy='30' r='13'/%3E%3Ccircle cx='0' cy='30' r='8'/%3E%3Ccircle cx='40' cy='30' r='18'/%3E%3Ccircle cx='40' cy='30' r='13'/%3E%3Ccircle cx='40' cy='30' r='8'/%3E%3C/g%3E%3C/svg%3E");background-size:11cqw 5.5cqw;opacity:.11;-webkit-mask-image:linear-gradient(120deg,transparent 30%,#000 100%);mask-image:linear-gradient(120deg,transparent 30%,#000 100%)}
-.gf{background:linear-gradient(180deg,#fff0b8 0%,#d9b255 42%,#f6d98a 58%,#9c7222 100%);-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent}
+.idc-pattern{position:absolute;inset:0;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='20' viewBox='0 0 40 20'%3E%3Cg fill='none' stroke='%23d6b26e' stroke-width='.9'%3E%3Ccircle cx='20' cy='20' r='18'/%3E%3Ccircle cx='20' cy='20' r='13'/%3E%3Ccircle cx='20' cy='20' r='8'/%3E%3Ccircle cx='0' cy='10' r='18'/%3E%3Ccircle cx='0' cy='10' r='13'/%3E%3Ccircle cx='0' cy='10' r='8'/%3E%3Ccircle cx='40' cy='10' r='18'/%3E%3Ccircle cx='40' cy='10' r='13'/%3E%3Ccircle cx='40' cy='10' r='8'/%3E%3Ccircle cx='0' cy='30' r='18'/%3E%3Ccircle cx='0' cy='30' r='13'/%3E%3Ccircle cx='0' cy='30' r='8'/%3E%3Ccircle cx='40' cy='30' r='18'/%3E%3Ccircle cx='40' cy='30' r='13'/%3E%3Ccircle cx='40' cy='30' r='8'/%3E%3C/g%3E%3C/svg%3E");background-size:11cqw 5.5cqw;opacity:.1;-webkit-mask-image:linear-gradient(160deg,transparent 40%,#000 100%);mask-image:linear-gradient(160deg,transparent 40%,#000 100%)}
 .idc-face>*{position:absolute}
-.idc-front .idc-pattern,.idc-back .idc-pattern,.idc-sheen{inset:0}
-.idc-sheen{background:linear-gradient(115deg,transparent 28%,rgba(255,255,255,.16) 41%,rgba(255,190,225,.2) 47%,rgba(130,225,255,.17) 53%,transparent 66%);background-size:260% 260%;background-position:var(--mx,40%) var(--my,30%);mix-blend-mode:screen;opacity:.6;pointer-events:none}
+.idc-face .idc-pattern,.idc-sheen{inset:0}
+.idc-sheen{background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.55) 44%,rgba(255,235,200,.35) 50%,transparent 62%);background-size:260% 260%;background-position:var(--mx,40%) var(--my,30%);mix-blend-mode:soft-light;opacity:.55;pointer-events:none}
+.idc-mark{right:-3cqw;bottom:-9cqw;font:700 46cqw/1 "Shippori Mincho",serif;color:rgba(179,38,30,.07);pointer-events:none}
 /* front */
-.idc-seal{left:6cqw;top:5.4cqw;width:8cqw;height:8cqw;border-radius:1.6cqw;background:linear-gradient(145deg,#e0453a,#a3201a);display:grid;place-items:center;font:700 5cqw "Shippori Mincho",serif;color:#fff;box-shadow:inset 0 0 0 .25cqw rgba(255,255,255,.28),0 .6cqw 1.2cqw rgba(0,0,0,.4)}
-.idc-brand{left:16.4cqw;top:6.6cqw;font:700 3.6cqw/1 "Zen Kaku Gothic New",sans-serif;letter-spacing:.34em}
-.idc-tag{right:6cqw;top:7.1cqw;font:500 max(1.9cqw,6.5px)/1 ui-monospace,Menlo,monospace;letter-spacing:.18em;color:#d6b26e;white-space:nowrap}
-.idc-chip{left:6cqw;top:21.5cqw;width:12.6cqw;height:9.6cqw;border-radius:1.7cqw;background:linear-gradient(135deg,#f7df93,#b98b2c 52%,#f2d174);box-shadow:inset 0 0 0 .25cqw rgba(80,50,0,.5)}
-.idc-chip::before{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(90deg,transparent 31%,rgba(80,50,0,.5) 31% 32.5%,transparent 32.5% 67.5%,rgba(80,50,0,.5) 67.5% 69%,transparent 69%),linear-gradient(0deg,transparent 33%,rgba(80,50,0,.5) 33% 35%,transparent 35% 65%,rgba(80,50,0,.5) 65% 67%,transparent 67%)}
-.idc-nfc{left:20.4cqw;top:22.6cqw;width:7cqw;height:7cqw;opacity:.85}
-.idc-num{left:6cqw;top:35cqw;font:600 5.4cqw/1 ui-monospace,"SF Mono",Menlo,monospace;letter-spacing:.13em;filter:drop-shadow(0 .25cqw 0 rgba(0,0,0,.55));white-space:nowrap}
-.idc-name{left:6cqw;top:45.2cqw;width:58cqw;font:700 5.2cqw/1.1 "Zen Kaku Gothic New",sans-serif;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 .3cqw .6cqw rgba(0,0,0,.5)}
-.idc-rank{left:6cqw;top:53.2cqw;font:500 max(2.4cqw,8px)/1 "Zen Kaku Gothic New",sans-serif;letter-spacing:.14em;color:#c9ac72;white-space:nowrap}
-.idc-rank b{color:#f6d98a}.idc-rank span{font-family:"Shippori Mincho",serif;color:#d9362b;letter-spacing:0;margin-left:.4em}
-.idc-photo{right:6cqw;top:18.5cqw;width:25cqw;height:30cqw;border-radius:2.2cqw;overflow:hidden;background:linear-gradient(160deg,#d9362b,#6f1519);display:grid;place-items:center;box-shadow:0 0 0 .5cqw #d6b26e,0 0 0 .9cqw rgba(0,0,0,.35),0 1cqw 2cqw rgba(0,0,0,.45)}
-.idc-photo span{font:700 9cqw "Shippori Mincho",serif;color:#fff}.idc-photo img{width:100%;height:100%;object-fit:cover}
-.idc-photo::after{content:"";position:absolute;inset:0;background:linear-gradient(120deg,rgba(255,255,255,.22),transparent 40%)}
-.idc-since{right:6cqw;top:51.6cqw;width:25cqw;text-align:center;font:500 max(1.8cqw,6px)/1 ui-monospace,Menlo,monospace;letter-spacing:.14em;color:#a3978a}.idc-since b{color:#d6b26e;font-weight:600}
+.idc-head{left:0;right:0;top:0;height:15.5cqw;background:linear-gradient(100deg,#c0291f 0%,#8f1d1b 100%);color:#fff;display:flex;align-items:center;gap:2.6cqw;padding:0 5.5cqw;box-shadow:0 .5cqw 1cqw rgba(0,0,0,.25)}
+.idc-head::after{content:"";position:absolute;left:0;right:0;bottom:0;height:.7cqw;background:linear-gradient(90deg,#e8c36a,#b8892b,#e8c36a)}
+.idc-seal{position:static;width:8.2cqw;height:8.2cqw;border-radius:1.5cqw;background:#fff;color:#b3261e;display:grid;place-items:center;font:700 5.4cqw "Shippori Mincho",serif;flex:none}
+.idc-brandblock{position:static;display:flex;flex-direction:column;gap:.9cqw;min-width:0}
+.idc-brandblock b{font:700 4.3cqw/1 "Zen Kaku Gothic New",sans-serif;letter-spacing:.3em}
+.idc-brandblock small{font:500 max(1.9cqw,6.4px)/1 ui-monospace,Menlo,monospace;letter-spacing:.16em;opacity:.9;white-space:nowrap}
+.idc-slot{left:50%;top:-1.4cqw;width:14cqw;height:4.2cqw;margin-left:-7cqw;border-radius:99px;background:#120d0d;box-shadow:inset 0 .4cqw .8cqw rgba(0,0,0,.8),0 0 0 .3cqw rgba(255,255,255,.18)}
+.idc-photo{left:5.5cqw;top:20.5cqw;width:24cqw;height:29cqw;border-radius:1.8cqw;overflow:hidden;background:linear-gradient(160deg,#d9362b,#6f1519);display:grid;place-items:center;box-shadow:0 0 0 .5cqw #fff,0 0 0 .8cqw rgba(60,35,25,.35),0 1cqw 1.8cqw rgba(0,0,0,.28)}
+.idc-photo span{font:700 9.5cqw "Shippori Mincho",serif;color:#fff}.idc-photo img{width:100%;height:100%;object-fit:cover}
+.idc-info{left:35.5cqw;right:5.5cqw;top:20cqw}
+.idc-name{margin:0;font:700 5.3cqw/1.1 "Zen Kaku Gothic New",sans-serif;letter-spacing:.02em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#1c1412}
+.idc-role{margin-top:1.8cqw;font:600 max(2.7cqw,8.5px)/1 "Zen Kaku Gothic New",sans-serif;letter-spacing:.08em;color:#5b4b40;white-space:nowrap}
+.idc-role b{color:#b3261e}.idc-role span{font-family:"Shippori Mincho",serif;color:#b3261e;margin-left:.4em}
+.idc-info dl{margin:3.4cqw 0 0;display:grid;grid-template-columns:auto auto;gap:2.6cqw 5cqw;padding-top:3cqw;border-top:.35cqw solid rgba(60,35,25,.22);justify-content:start}
+.idc-info dl>div:first-child{grid-column:1/-1}
+.idc-info dt{font:500 max(1.8cqw,6px)/1 ui-monospace,Menlo,monospace;letter-spacing:.2em;color:#8a7767}
+.idc-info dd{margin:.9cqw 0 0;font:700 max(3cqw,9.5px)/1 ui-monospace,"SF Mono",Menlo,monospace;letter-spacing:.06em;color:#1c1412;white-space:nowrap}
+.idc-barcode{left:5.5cqw;right:5.5cqw;top:53.6cqw;height:6.2cqw;display:flex;align-items:flex-end;gap:2.4cqw}
+.idc-barcode span{flex:1;height:100%;display:flex;gap:.45cqw;align-items:stretch}.idc-barcode span i{background:#1c1412;border-radius:.1cqw}
+.idc-barcode em{font:500 max(1.9cqw,6px)/1 ui-monospace,Menlo,monospace;font-style:normal;letter-spacing:.12em;color:#5b4b40;white-space:nowrap}
 /* back */
-.idc-stripe{left:0;right:0;top:6cqw;height:10.5cqw;background:linear-gradient(#0a0808,#1e1818 50%,#0a0808);display:flex;align-items:center;justify-content:space-between;padding:0 6cqw;font:500 max(1.9cqw,6.5px)/1 ui-monospace,Menlo,monospace;letter-spacing:.2em;color:#9c7f48}
-.idc-stripe em{font-style:normal;color:#d9362b;border:1px solid #d9362b;border-radius:99px;padding:.5cqw 1.6cqw;letter-spacing:.14em}
-.idc-lab{left:6cqw;font:500 max(1.9cqw,6.5px)/1 ui-monospace,Menlo,monospace;letter-spacing:.2em;color:#a3978a}.idc-lab.l1{top:20.4cqw}
-.idc-hours{left:6cqw;top:24.4cqw;font:700 10.5cqw/1.05 "Zen Kaku Gothic New",sans-serif;letter-spacing:-.01em;white-space:nowrap}
-.idc-pill{left:6cqw;top:37.8cqw;display:flex;align-items:center;gap:1.8cqw;font:500 max(2.2cqw,7.5px)/1 "Zen Kaku Gothic New",sans-serif;color:#a3978a;white-space:nowrap}
-.idc-pill b{background:linear-gradient(145deg,#e0453a,#a3201a);color:#fff;border-radius:99px;padding:1cqw 2.6cqw;font-size:max(2.7cqw,8.5px);letter-spacing:.1em}
-.idc-bars{right:6cqw;top:20.4cqw;width:36cqw;height:21cqw;display:flex;gap:1.6cqw;align-items:stretch}
+.idc-stripe{left:0;right:0;top:0;height:11cqw;background:linear-gradient(100deg,#2a1c19,#120d0d);display:flex;align-items:center;justify-content:space-between;padding:0 5.5cqw;font:500 max(2cqw,6.5px)/1 ui-monospace,Menlo,monospace;letter-spacing:.2em;color:#e8c36a}
+.idc-stripe em{font-style:normal;color:#fff;background:#b3261e;border-radius:99px;padding:.7cqw 2cqw;letter-spacing:.14em}
+.idc-lab{left:5.5cqw;font:500 max(1.9cqw,6.5px)/1 ui-monospace,Menlo,monospace;letter-spacing:.2em;color:#8a7767}.idc-lab.l1{top:15.5cqw}
+.gf{color:#1c1412;background:none;-webkit-text-fill-color:currentColor}
+.idc-hours{left:5.5cqw;top:19.6cqw;font:700 10.5cqw/1.05 "Zen Kaku Gothic New",sans-serif;letter-spacing:-.01em;white-space:nowrap;color:#1c1412}
+.idc-pill{left:5.5cqw;top:33.2cqw;display:flex;align-items:center;gap:1.8cqw;font:500 max(2.3cqw,7.5px)/1 "Zen Kaku Gothic New",sans-serif;color:#5b4b40;white-space:nowrap}
+.idc-pill b{background:linear-gradient(145deg,#d4372c,#9a1f19);color:#fff;border-radius:99px;padding:1cqw 2.6cqw;font-size:max(2.7cqw,8.5px);letter-spacing:.1em}
+.idc-bars{right:5.5cqw;top:15.5cqw;width:37cqw;height:21cqw;display:flex;gap:1.6cqw;align-items:stretch}
 .idc-bars span{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:.8cqw;min-width:0}
-.idc-bars i{display:block;width:100%;border-radius:.8cqw .8cqw .3cqw .3cqw;background:linear-gradient(#7f6a45,#4d3f29)}
-.idc-bars span.on i{background:linear-gradient(#fbe9a8,#c9a24a)}
-.idc-bars b{font:500 max(1.8cqw,6px)/1 ui-monospace,Menlo,monospace;color:#8f8478}.idc-bars span.on b{color:#f6d98a}
-.idc-stats{left:6cqw;right:6cqw;top:46.8cqw;display:flex;align-items:flex-end;justify-content:space-between;gap:3cqw;padding-top:2.4cqw;border-top:1px solid rgba(214,178,110,.28)}
-.idc-stats small{display:block;font:500 max(1.7cqw,6px)/1 ui-monospace,Menlo,monospace;letter-spacing:.18em;color:#8f8478;margin-bottom:1cqw;white-space:nowrap}
-.idc-stats strong{font:700 max(3.7cqw,11px)/1 "Zen Kaku Gothic New",sans-serif;color:#f6d98a;white-space:nowrap}
-.idc-stats .xp{flex:1;min-width:0}.idc-stats .xp i{display:block;height:1.1cqw;border-radius:99px;background:rgba(255,255,255,.12);overflow:hidden;margin-top:1.3cqw}.idc-stats .xp u{display:block;height:100%;background:linear-gradient(90deg,#d9362b,#f6d98a);border-radius:inherit}
+.idc-bars i{display:block;width:100%;border-radius:.8cqw .8cqw .3cqw .3cqw;background:#cdbba3}
+.idc-bars span.on i{background:linear-gradient(#d9362b,#9a1f19)}
+.idc-bars b{font:500 max(1.8cqw,6px)/1 ui-monospace,Menlo,monospace;color:#8a7767}.idc-bars span.on b{color:#b3261e}
+.idc-stats{left:5.5cqw;right:5.5cqw;top:44cqw;display:flex;align-items:flex-end;justify-content:space-between;gap:3cqw;padding-top:2.6cqw;border-top:.35cqw solid rgba(60,35,25,.22)}
+.idc-stats small{display:block;font:500 max(1.7cqw,6px)/1 ui-monospace,Menlo,monospace;letter-spacing:.18em;color:#8a7767;margin-bottom:1cqw;white-space:nowrap}
+.idc-stats strong{font:700 max(3.7cqw,11px)/1 "Zen Kaku Gothic New",sans-serif;color:#1c1412;white-space:nowrap}
+.idc-stats .xp{flex:1;min-width:0}.idc-stats .xp i{display:block;height:1.2cqw;border-radius:99px;background:rgba(60,35,25,.15);overflow:hidden;margin-top:1.3cqw}.idc-stats .xp u{display:block;height:100%;background:linear-gradient(90deg,#d9362b,#e8c36a);border-radius:inherit}
 .idc-stats .xp small{margin-bottom:0}
-.idc-stats .code strong{font-family:ui-monospace,Menlo,monospace;font-size:max(2.9cqw,9px);letter-spacing:.06em;color:#f3ece2}
+.idc-stats .code strong{font-family:ui-monospace,Menlo,monospace;font-size:max(2.9cqw,9px);letter-spacing:.05em}
 .idc-hint{margin:2.4cqw 0 0;text-align:center;font:500 11px ui-monospace,Menlo,monospace;letter-spacing:.14em;color:#8f8478;text-transform:uppercase}
 .crane-cv{position:absolute;left:-22%;top:-40%;width:144%;height:182%;pointer-events:none;z-index:6;filter:drop-shadow(0 6px 5px rgba(0,0,0,.4))}
 @media(prefers-reduced-motion:reduce){.idc-flip{transition-duration:.01s}.idc-tilt{transition:none}}

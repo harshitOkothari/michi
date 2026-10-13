@@ -416,8 +416,8 @@ const Study = {
     ]);
 
     const combined = [
-      ...sessions.slice(0, 8).map((s) => ({ type: "Session", label: s.topic_text || "Study session", sub: fmtDuration(s.duration_sec), date: s.start_time })),
-      ...pomos.slice(0, 8).map((p) => ({ type: "Pomodoro", label: p.topic_text || "Pomodoro", sub: `${p.duration_min} min`, date: p.completed_at })),
+      ...sessions.slice(0, 8).map((s) => ({ type: "Session", label: s.topic_text || "Study session", sub: fmtDuration(s.duration_sec), date: s.start_time, id: s.id, kind: "session" })),
+      ...pomos.slice(0, 8).map((p) => ({ type: "Pomodoro", label: p.topic_text || "Pomodoro", sub: `${p.duration_min} min`, date: p.completed_at, id: p.id, kind: "pomodoro" })),
     ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 10);
 
     if (!combined.length) {
@@ -425,7 +425,7 @@ const Study = {
       return;
     }
     el.innerHTML = combined
-      .map((r) => `<div class="mini-row"><span>${r.type === "Pomodoro" ? "⏱" : "📖"} ${escapeHtml(r.label)}</span><span>${r.sub}</span><span class="muted">${fmtDate(r.date)}</span></div>`)
+      .map((r) => `<div class="mini-row"><span>${r.type === "Pomodoro" ? "⏱" : "📖"} ${escapeHtml(r.label)}</span><span>${r.sub}</span><span class="muted">${fmtDate(r.date)}</span><button class=\"rec-del\" type=\"button\" data-del-kind=\"${r.kind}\" data-del-id=\"${r.id}\" title=\"Delete (asks for your password)\" aria-label=\"Delete this record\">🗑</button></div>`)
       .join("");
   },
 };

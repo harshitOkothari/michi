@@ -46,7 +46,7 @@ language sql security definer set search_path = public as $$
   select p.id, p.name, p.avatar_url, p.friend_code,
          coalesce(sum(s.duration_sec) filter (where s.start_time >= week_start and s.start_time < week_start + interval '7 days'), 0)::bigint,
          coalesce(max(st.current_streak), 0)::int,
-         (p.id = auth.uid())        
+         (p.id = auth.uid())
   from profiles p
   left join study_sessions s on s.user_id = p.id
   left join streaks st on st.user_id = p.id
